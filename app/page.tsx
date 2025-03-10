@@ -166,121 +166,17 @@ export default function Home() {
     }
   };
 
-  /*
-  const uploadFile = async (file: File) => {
-    try {
-      // ELB sınırlamaları nedeniyle tüm dosyaları presigned URL ile yükle
-      console.log(
-        "Tüm dosyalar için presigned URL upload kullanılıyor - dosya boyutu:",
-        file.size
-      );
-      await presignedUrlUpload(file);
-    } catch (error) {
-      console.error("Error uploading file:", error);
-      alert("Dosya yükleme hatası: " + (error as Error).message);
-    }
-  };
-
-  const presignedUrlUpload = async (file: File) => {
-    console.log("Presigned URL upload kullanılıyor, dosya boyutu:", file.size);
-    try {
-      // 1. Önce API'den presigned URL iste
-      console.log("Presigned URL isteniyor...");
-      const presignedUrlResponse = await fetch("/api/upload", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          fileName: file.name,
-          fileType: file.type,
-          fileSize: file.size,
-        }),
-      });
-
-      if (!presignedUrlResponse.ok) {
-        const errorData = await presignedUrlResponse.json();
-        console.error("Presigned URL hatası:", errorData);
-        throw new Error(errorData.error || "Presigned URL alma hatası");
-      }
-
-      const presignedData = await presignedUrlResponse.json();
-      console.log("Presigned URL alındı:", presignedData);
-
-      if (presignedData.strategy !== "direct-upload" || !presignedData.url) {
-        throw new Error("Beklenen upload stratejisi alınamadı");
-      }
-
-      // 2. Dosyayı doğrudan upload URL'ine yükle
-      const uploadFormData = new FormData();
-
-      // Gerekli diğer alanları ekle (form fields)
-      if (presignedData.fields) {
-        Object.entries(presignedData.fields).forEach(
-          ([fieldName, fieldValue]) => {
-            uploadFormData.append(fieldName, fieldValue as string);
-          }
-        );
-      }
-
-      // Dosyayı ekle (file nesnesi en son eklenmeli)
-      uploadFormData.append("file", file);
-
-      console.log("Dosya yükleniyor...");
-      const uploadResponse = await fetch(presignedData.url, {
-        method: "POST",
-        body: uploadFormData,
-      });
-
-      if (!uploadResponse.ok) {
-        const errorText = await uploadResponse.text();
-        console.error("Upload hatası:", uploadResponse.status, errorText);
-        throw new Error(`Dosya yükleme hatası: ${uploadResponse.status}`);
-      }
-
-      console.log("Dosya başarıyla yüklendi!");
-      const uploadResult = await uploadResponse.json();
-      console.log("Upload sonucu:", uploadResult);
-
-      // 3. Yükleme işlemini backend'e bildir
-      console.log("Finalize isteği gönderiliyor...");
-      const finalizeResponse = await fetch("/api/upload/finalize", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          key: presignedData.key,
-          fileName: file.name,
-          fileSize: file.size,
-          fileType: file.type,
-        }),
-      });
-
-      if (!finalizeResponse.ok) {
-        const errorData = await finalizeResponse.json();
-        console.error("Finalize hatası:", errorData);
-        throw new Error(errorData.error || "Yükleme işlemi tamamlanamadı");
-      }
-
-      const finalizeResult = await finalizeResponse.json();
-      console.log("Upload finalize sonucu:", finalizeResult);
-      return finalizeResult;
-    } catch (error) {
-      console.error("Presigned URL upload hatası:", error);
-      throw error;
-    }
-  };
-  */
-
   const handleClear = async () => {
     try {
-      if (apiUrl) {
-        await fetch(apiUrl + "/clear", { method: "POST" });
-      }
       setFile(null);
       setResponse(null);
       setChatHistory([]);
+      setExtractedText("");
+      
+      // Soru input alanını da temizle
+      if (questionInputRef.current) {
+        questionInputRef.current.value = "";
+      }
     } catch (error) {
       console.error("Temizleme hatası:", error);
     }
@@ -320,17 +216,22 @@ export default function Home() {
 
   const handleQuestionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!question.trim() || !apiUrl) return;
+    if (!question.trim()) return;
 
     const userQuestion = question.trim();
     setChatHistory([...chatHistory, { type: "question", text: userQuestion }]);
     setQuestion("");
 
     try {
-      const res = await fetch(apiUrl + "/api/chat", {
+      const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userQuestion, documentType }),
+        body: JSON.stringify({ 
+          message: userQuestion, 
+          documentType,
+          // Eğer PDF'den çıkarılan metin varsa, onu da gönderelim
+          extractedText: extractedText || undefined
+        }),
       });
       const data = await res.json();
 
@@ -660,144 +561,8 @@ export default function Home() {
     fetchServices();
   }, []);
 
-  const testServer = async () => {
-    setTestLoading(true);
-    setServerResponse("");
-    try {
-      const response = await fetch("/api/test");
-      const result = await response.json();
-      setServerResponse(JSON.stringify(result, null, 2));
-    } catch (err) {
-      setServerResponse(
-        "Failed to connect to the server: " +
-          (err instanceof Error ? err.message : String(err))
-      );
-    } finally {
-      setTestLoading(false);
-    }
-  };
-  const testServerUpload = async () => {
-    setTestLoadingUpload(true);
-    setServerResponseUpload("");
-    try {
-      const response = await fetch("/api/uploadTest");
-      const result = await response.json();
-      setServerResponseUpload(JSON.stringify(result, null, 2));
-    } catch (err) {
-      setServerResponseUpload(
-        "Failed to connect to the server: " +
-          (err instanceof Error ? err.message : String(err))
-      );
-    } finally {
-      setTestLoadingUpload(false);
-    }
-  };
 
-  // Test POST upload endpoint
-  const testUploadPost = async () => {
-    setTestLoadingUploadPost(true);
-    setUploadPostResponse("");
-    
-    // Get the file input element
-    const fileInput = document.getElementById('pdfTestUpload') as HTMLInputElement;
-    
-    if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
-      setUploadPostResponse("Lütfen bir PDF dosyası seçin.");
-      setTestLoadingUploadPost(false);
-      return;
-    }
-    
-    const pdfFile = fileInput.files[0];
-    
-    // Check if the file is a PDF
-    if (pdfFile.type !== 'application/pdf') {
-      setUploadPostResponse("Lütfen sadece PDF dosyası yükleyin.");
-      setTestLoadingUploadPost(false);
-      return;
-    }
-    
-    try {
-      // PDF.js modülünün yüklendiğinden emin olalım
-      if (!pdfjs) {
-        // PDF.js modülünü dinamik olarak yükle
-        const pdf = await import('pdfjs-dist');
-        pdfjs = pdf;
-        GlobalWorkerOptions = pdf.GlobalWorkerOptions;
-        GlobalWorkerOptions.workerSrc = '/pdfjs/pdf.worker.min.js';
-      }
-      
-      // Read the file as ArrayBuffer
-      const arrayBuffer = await pdfFile.arrayBuffer();
-      const uint8Array = new Uint8Array(arrayBuffer);
-      
-      console.log("PDF yükleniyor...");
-      
-      // Load the PDF document
-      const loadingTask = pdfjs.getDocument({ data: uint8Array });
-      const pdfDoc = await loadingTask.promise;
-      
-      console.log(`PDF yüklendi. Toplam sayfa sayısı: ${pdfDoc.numPages}`);
-      
-      let extractedText = "";
-      // Extract text from each page
-      for (let i = 0; i < pdfDoc.numPages; i++) {
-        console.log(`Sayfa ${i + 1} işleniyor...`);
-        const page = await pdfDoc.getPage(i + 1);
-        const textContent = await page.getTextContent();
-        const pageText = textContent.items
-          .map((item: any) => item.str)
-          .join(" ");
-        extractedText += `--- Sayfa ${i + 1} ---\n${pageText}\n\n`;
-      }
-      
-      // Set the extracted text as response
-      setUploadPostResponse(extractedText || "PDF dosyasından metin çıkarılamadı veya dosya boş.");
-      
-      // Also set the extractedText state so the POST button becomes enabled
-      setExtractedText(extractedText);
-      
-      console.log("PDF text extracted successfully");
-    } catch (error) {
-      console.error("Error extracting text from PDF:", error);
-      setUploadPostResponse(`PDF metin çıkarma hatası: ${error instanceof Error ? error.message : String(error)}\n\nLütfen farklı bir PDF dosyası deneyin veya dosyanın bozuk olmadığından emin olun.`);
-    } finally {
-      setTestLoadingUploadPost(false);
-    }
-  };
 
-  // New function to test uploading extracted text
-  const testUploadExtractedText = async () => {
-    if (!extractedText) {
-      alert("Önce bir PDF dosyasından metin çıkarın!");
-      return;
-    }
-    
-    setTestLoadingExtractedTextPost(true);
-    setUploadPostResponse("");
-    
-    try {
-      const response = await fetch('/api/uploadTest', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ extractedText }),
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Server responded with status: ${response.status}`);
-      }
-      
-      const result = await response.json();
-      setUploadPostResponse(JSON.stringify(result, null, 2));
-      console.log("Extracted text uploaded successfully");
-    } catch (error) {
-      console.error("Error uploading extracted text:", error);
-      setUploadPostResponse(`Metin yükleme hatası: ${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      setTestLoadingExtractedTextPost(false);
-    }
-  };
 
   const handleChat = async () => {
     if (!message.trim()) return;
@@ -876,73 +641,8 @@ export default function Home() {
           <h1 className="text-3xl font-bold text-card-foreground">
             Kubernetes Services ({data.count})
           </h1>
-          
-          {/* Server Test Buttons */}
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={testServer} disabled={testLoading}>
-              {testLoading ? "Testing..." : "Test Server"}
-            </Button>
-            <Button onClick={testServerUpload} disabled={testLoadingUpload}>
-              {testLoadingUpload ? "Testing..." : "Test upload Server"}
-            </Button>
-          </div>
-          
-          {/* PDF Upload Test Section */}
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <input
-              type="file"
-              id="pdfTestUpload"
-              accept="application/pdf"
-              className="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-            />
-            <Button onClick={testUploadPost} disabled={testLoadingUploadPost}>
-              {testLoadingUploadPost ? "Metin Çıkarılıyor..." : "PDF'den Metin Çıkar"}
-            </Button>
-            <Button 
-              onClick={testUploadExtractedText} 
-              disabled={testLoadingExtractedTextPost || !extractedText}
-              className="bg-green-600 hover:bg-green-700"
-            >
-              {testLoadingExtractedTextPost ? "İşleniyor..." : "Çıkarılan Metni POST ile Gönder"}
-            </Button>
-          </div>
         </div>
-        
-        {/* Response Sections */}
-        <div className="space-y-4 mb-6">
-          {serverResponse && (
-            <div className="bg-card p-4 rounded-lg shadow-lg">
-              <h2 className="text-xl font-semibold text-card-foreground mb-2">
-                Server Response:
-              </h2>
-              <pre className="bg-muted p-4 rounded-md overflow-x-auto text-sm">
-                {serverResponse}
-              </pre>
-            </div>
-          )}
-          
-          {serverResponseUpload && (
-            <div className="bg-card p-4 rounded-lg shadow-lg">
-              <h2 className="text-xl font-semibold text-card-foreground mb-2">
-                Upload Server Response:
-              </h2>
-              <pre className="bg-muted p-4 rounded-md overflow-x-auto text-sm">
-                {serverResponseUpload}
-              </pre>
-            </div>
-          )}
-          
-          {uploadPostResponse && (
-            <div className="bg-card p-4 rounded-lg shadow-lg">
-              <h2 className="text-xl font-semibold text-card-foreground mb-2">
-                PDF Metin İşleme Sonucu:
-              </h2>
-              <pre className="bg-muted p-4 rounded-md overflow-x-auto text-sm whitespace-pre-wrap">
-                {uploadPostResponse}
-              </pre>
-            </div>
-          )}
-        </div>
+
         
         {/* PDF Analysis Interface */}
         <div

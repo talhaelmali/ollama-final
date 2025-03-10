@@ -203,11 +203,6 @@ app.post("/api/upload/finalize", async (req, res) => {
   }
 });
 
-// Clear stored PDF content
-app.post("/clear", (req, res) => {
-  storedPDFContent = null;
-  res.json({ message: "Temizlendi" });
-});
 
 // PDF analysis endpoint (now accepts text directly)
 app.post("/api/pdfanalysis", express.json(), async (req, res) => {
@@ -325,24 +320,27 @@ app.post("/api/pdfanalysis", express.json(), async (req, res) => {
 
 // Birleştirilmiş Chat API endpoint'i
 app.post('/api/chat', async (req, res) => {
-  const { message, documentType } = req.body;
+  const { message, documentType, extractedText } = req.body;
   
   if (!message) {
     return res.status(400).json({ error: 'Message is required' });
   }
 
+  // Frontend'den gelen extractedText veya daha önce kaydedilmiş storedPDFContent kullan
+  const pdfContent = extractedText || storedPDFContent;
+
   // PDF içeriği varsa PDF analiz işlevselliğini kullan
-  if (storedPDFContent) {
+  if (pdfContent) {
     try {
       let systemPrompt = "";
       if (documentType === "signature") {
         systemPrompt = `You are an assistant specialized in analyzing signature circulars. 
-        You have access to a signature circular document with the following content: ${storedPDFContent}
+        You have access to a signature circular document with the following content: ${pdfContent}
         Please provide accurate information about the signatories, their authorities, and any specific details about their signing powers.
         Focus on answering questions about who can sign, their positions, and their authorization limits.`;
       } else {
         systemPrompt = `You are a legal document analysis assistant with expertise in Turkish law.
-        You have access to a legal document with the following content: ${storedPDFContent}
+        You have access to a legal document with the following content: ${pdfContent}
         Provide detailed analysis and explanations about the document's content, legal implications, and specific clauses.
         Focus on explaining legal terms, requirements, and implications in clear, understandable terms.`;
       }
