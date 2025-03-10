@@ -15,7 +15,7 @@ const config = {
   model: 'llama3.1:8b',
   temperature: 0.7,
   num_ctx: 20480,
-  uploadDir: 'server/uploads/'
+  uploadDir: '/uploads'
 };
 
 // Store PDF content in memory
@@ -71,6 +71,30 @@ app.get('/uploadTest', (req, res) => {
     message: 'Upload server is working!',
     timestamp: new Date().toISOString()
   });
+});
+
+// Test POST endpoint for uploads - simple version
+app.post('/api/uploadTest', async (req, res) => {
+  try {
+    // Log received data
+    console.log("POST test data received:", req.body);
+    
+    // Return success response with received data
+    res.json({
+      status: 'success',
+      message: 'POST test successful!',
+      receivedData: req.body,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('POST test error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'POST test failed',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // Presigned URL endpoint for direct uploads

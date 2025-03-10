@@ -40,6 +40,8 @@ export default function Home() {
   const [serverResponseUpload, setServerResponseUpload] = useState<string>("");
   const [testLoading, setTestLoading] = useState(false);
   const [testLoadingUpload, setTestLoadingUpload] = useState(false);
+  const [testLoadingUploadPost, setTestLoadingUploadPost] = useState(false);
+  const [uploadPostResponse, setUploadPostResponse] = useState<string>("");
 
   // PDF analysis state
   const [baseUrl, setBaseUrl] = useState("");
@@ -604,6 +606,39 @@ export default function Home() {
     }
   };
 
+  // Test POST upload endpoint
+  const testUploadPost = async () => {
+    setTestLoadingUploadPost(true);
+    setUploadPostResponse("");
+    try {
+      // Simple test data
+      const testData = {
+        name: "Test User",
+        message: "Hello from client!",
+        timestamp: new Date().toISOString()
+      };
+      
+      // Send POST request with JSON data
+      const response = await fetch("/api/uploadTest", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(testData)
+      });
+      
+      const result = await response.json();
+      setUploadPostResponse(JSON.stringify(result, null, 2));
+    } catch (err) {
+      setUploadPostResponse(
+        "Failed to test POST: " +
+          (err instanceof Error ? err.message : String(err))
+      );
+    } finally {
+      setTestLoadingUploadPost(false);
+    }
+  };
+
   const handleChat = async () => {
     if (!message.trim()) return;
 
@@ -687,6 +722,9 @@ export default function Home() {
           <Button onClick={testServerUpload} disabled={testLoadingUpload}>
             {testLoadingUpload ? "Testing..." : "Test upload Server"}
           </Button>
+          <Button onClick={testUploadPost} disabled={testLoadingUploadPost} className="ml-2">
+            {testLoadingUploadPost ? "Testing..." : "Test POST"}
+          </Button>
         </div>
         {serverResponse && (
           <div className="bg-card p-4 rounded-lg shadow-lg mb-6">
@@ -701,10 +739,20 @@ export default function Home() {
         {serverResponseUpload && (
           <div className="bg-card p-4 rounded-lg shadow-lg mb-6">
             <h2 className="text-xl font-semibold text-card-foreground mb-2">
-              Server Response:
+              Upload Server Response:
             </h2>
             <pre className="bg-muted p-4 rounded-md overflow-x-auto">
               {serverResponseUpload}
+            </pre>
+          </div>
+        )}
+        {uploadPostResponse && (
+          <div className="bg-card p-4 rounded-lg shadow-lg mb-6">
+            <h2 className="text-xl font-semibold text-card-foreground mb-2">
+               POST Test Response:
+            </h2>
+            <pre className="bg-muted p-4 rounded-md overflow-x-auto">
+              {uploadPostResponse}
             </pre>
           </div>
         )}
