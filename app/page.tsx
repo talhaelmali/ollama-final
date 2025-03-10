@@ -1,9 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import Image from "next/image";
+
+// PDF.js modüllerini dinamik olarak import edeceğiz
+let pdfjs: any;
+let GlobalWorkerOptions: any;
+
+// PDF.js modüllerini sadece tarayıcı tarafında yükle
+if (typeof window !== 'undefined') {
+  import('pdfjs-dist').then((pdf) => {
+    pdfjs = pdf;
+    GlobalWorkerOptions = pdf.GlobalWorkerOptions;
+    GlobalWorkerOptions.workerSrc = '/pdfjs/pdf.worker.min.js';
+  });
+}
 
 interface ServicePort {
   port: number;
@@ -56,6 +69,9 @@ export default function Home() {
   const [message, setMessage] = useState("");
   const [aiResponse, setAiResponse] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
+  const [extractedText, setExtractedText] = useState<string>("");
+  const [isExtracting, setIsExtracting] = useState<boolean>(false);
+  const questionInputRef = useRef<HTMLTextAreaElement>(null);
 
   // File handling functions
   const handleFileChange = async (
@@ -66,7 +82,71 @@ export default function Home() {
     const file = files[0];
     if (!file) return;
 
-    await uploadFile(file);
+    setFile(file);
+
+    // Check if it's a PDF file
+    if (file.type === 'application/pdf') {
+      // Ask user if they want to extract text or upload
+      if (window.confirm("PDF dosyasından metin çıkarmak ister misiniz? İptal'e basarsanız dosya sunucuya yüklenecektir.")) {
+        // Extract text from PDF
+        await extractTextFromPDF(file);
+      } else {
+        // Upload file
+        await uploadFile(file);
+      }
+    } else {
+      // Upload other file types as before
+      await uploadFile(file);
+    }
+  };
+
+  // Extract text from PDF file in the browser
+  const extractTextFromPDF = async (file: File) => {
+    setIsExtracting(true);
+    try {
+      // PDF.js modülünün yüklendiğinden emin olalım
+      if (!pdfjs) {
+        // PDF.js modülünü dinamik olarak yükle
+        const pdf = await import('pdfjs-dist');
+        pdfjs = pdf;
+        GlobalWorkerOptions = pdf.GlobalWorkerOptions;
+        GlobalWorkerOptions.workerSrc = '/pdfjs/pdf.worker.min.js';
+      }
+      
+      // Read the file as ArrayBuffer
+      const arrayBuffer = await file.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      
+      // Load the PDF document
+      const loadingTask = pdfjs.getDocument({ data: uint8Array });
+      const pdfDoc = await loadingTask.promise;
+      
+      let text = "";
+      // Extract text from each page
+      for (let i = 0; i < pdfDoc.numPages; i++) {
+        const page = await pdfDoc.getPage(i + 1);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items
+          .map((item: any) => item.str)
+          .join(" ");
+        text += `--- Sayfa ${i + 1} ---\n${pageText}\n\n`;
+      }
+      
+      // Set the extracted text
+      setExtractedText(text);
+      
+      // Also set the text in the question input for convenience
+      if (questionInputRef.current) {
+        questionInputRef.current.value = text;
+      }
+      
+      console.log("PDF text extracted successfully");
+    } catch (error) {
+      console.error("Error extracting text from PDF:", error);
+      alert("PDF metin çıkarma hatası: " + (error as Error).message);
+    } finally {
+      setIsExtracting(false);
+    }
   };
 
   const uploadFile = async (file: File) => {
@@ -294,8 +374,13 @@ export default function Home() {
           fileInput.files = dataTransfer.files;
         }
 
-        // Dosyayı yükle
-        await uploadFile(droppedFile);
+        // Check if we should extract text or upload
+        if (window.confirm("PDF dosyasından metin çıkarmak ister misiniz? İptal'e basarsanız dosya sunucuya yüklenecektir.")) {
+          await extractTextFromPDF(droppedFile);
+        } else {
+          // Dosyayı yükle
+          await uploadFile(droppedFile);
+        }
       } else {
         alert("Lütfen sadece PDF dosyası yükleyin.");
       }
@@ -630,23 +715,80 @@ export default function Home() {
     }
     
     try {
-      // Create form data
-      const formData = new FormData();
-      formData.append('file', pdfFile);
+      // PDF.js modülünün yüklendiğinden emin olalım
+      if (!pdfjs) {
+        // PDF.js modülünü dinamik olarak yükle
+        const pdf = await import('pdfjs-dist');
+        pdfjs = pdf;
+        GlobalWorkerOptions = pdf.GlobalWorkerOptions;
+        GlobalWorkerOptions.workerSrc = '/pdfjs/pdf.worker.min.js';
+      }
       
-      // Send POST request with FormData
-      const response = await fetch("/api/uploadTest", {
-        method: "POST",
-        body: formData
+      // Read the file as ArrayBuffer
+      const arrayBuffer = await pdfFile.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      
+      console.log("PDF yükleniyor...");
+      
+      // Load the PDF document
+      const loadingTask = pdfjs.getDocument({ data: uint8Array });
+      const pdfDoc = await loadingTask.promise;
+      
+      console.log(`PDF yüklendi. Toplam sayfa sayısı: ${pdfDoc.numPages}`);
+      
+      let extractedText = "";
+      // Extract text from each page
+      for (let i = 0; i < pdfDoc.numPages; i++) {
+        console.log(`Sayfa ${i + 1} işleniyor...`);
+        const page = await pdfDoc.getPage(i + 1);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items
+          .map((item: any) => item.str)
+          .join(" ");
+        extractedText += `--- Sayfa ${i + 1} ---\n${pageText}\n\n`;
+      }
+      
+      // Set the extracted text as response
+      setUploadPostResponse(extractedText || "PDF dosyasından metin çıkarılamadı veya dosya boş.");
+      
+      console.log("PDF text extracted successfully");
+    } catch (error) {
+      console.error("Error extracting text from PDF:", error);
+      setUploadPostResponse(`PDF metin çıkarma hatası: ${error instanceof Error ? error.message : String(error)}\n\nLütfen farklı bir PDF dosyası deneyin veya dosyanın bozuk olmadığından emin olun.`);
+    } finally {
+      setTestLoadingUploadPost(false);
+    }
+  };
+
+  // New function to test uploading extracted text
+  const testUploadExtractedText = async () => {
+    if (!extractedText) {
+      alert("Önce bir PDF dosyasından metin çıkarın!");
+      return;
+    }
+    
+    setTestLoadingUploadPost(true);
+    setUploadPostResponse("");
+    
+    try {
+      const response = await fetch('/api/uploadTest', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ extractedText }),
       });
+      
+      if (!response.ok) {
+        throw new Error(`Server responded with status: ${response.status}`);
+      }
       
       const result = await response.json();
       setUploadPostResponse(JSON.stringify(result, null, 2));
-    } catch (err) {
-      setUploadPostResponse(
-        "Failed to test PDF upload: " +
-          (err instanceof Error ? err.message : String(err))
-      );
+      console.log("Extracted text uploaded successfully");
+    } catch (error) {
+      console.error("Error uploading extracted text:", error);
+      setUploadPostResponse(`Metin yükleme hatası: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setTestLoadingUploadPost(false);
     }
@@ -749,7 +891,14 @@ export default function Home() {
               className="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
             />
             <Button onClick={testUploadPost} disabled={testLoadingUploadPost}>
-              {testLoadingUploadPost ? "Yükleniyor..." : "PDF Dosyası Yükle"}
+              {testLoadingUploadPost ? "Metin Çıkarılıyor..." : "PDF'den Metin Çıkar"}
+            </Button>
+            <Button 
+              onClick={testUploadExtractedText} 
+              disabled={testLoadingUploadPost || !extractedText}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {testLoadingUploadPost ? "İşleniyor..." : "Çıkarılan Metni POST ile Gönder"}
             </Button>
           </div>
         </div>
@@ -781,9 +930,9 @@ export default function Home() {
           {uploadPostResponse && (
             <div className="bg-card p-4 rounded-lg shadow-lg">
               <h2 className="text-xl font-semibold text-card-foreground mb-2">
-                PDF Yükleme Sonucu:
+                PDF Metin İşleme Sonucu:
               </h2>
-              <pre className="bg-muted p-4 rounded-md overflow-x-auto text-sm">
+              <pre className="bg-muted p-4 rounded-md overflow-x-auto text-sm whitespace-pre-wrap">
                 {uploadPostResponse}
               </pre>
             </div>

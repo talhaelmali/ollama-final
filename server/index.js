@@ -15,7 +15,7 @@ const config = {
   model: 'llama3.1:8b',
   temperature: 0.7,
   num_ctx: 20480,
-  uploadDir: '/uploads'
+  uploadDir: 'uploads'
 };
 
 // Store PDF content in memory
@@ -74,55 +74,38 @@ app.get('/uploadTest', (req, res) => {
 });
 
 // Test POST endpoint for uploads - simple version
-app.post('/api/uploadTest', upload.single('file'), async (req, res) => {
-  try {
-    // Check if this is a file upload or JSON data
-    if (req.file) {
-      // This is a file upload
-      console.log("File upload received:", req.file);
-      
-      // Check if the file is a PDF
-      if (!req.file.mimetype || req.file.mimetype !== 'application/pdf') {
-        return res.status(400).json({
-          status: 'error',
-          message: 'Only PDF files are allowed',
-          timestamp: new Date().toISOString()
-        });
-      }
-      
-      // Return success response with file info
-      res.json({
-        status: 'success',
-        message: 'PDF dosyası başarıyla yüklendi!',
-        fileInfo: {
-          filename: req.file.filename,
-          originalName: req.file.originalname,
-          size: req.file.size,
-          mimetype: req.file.mimetype
-        },
-        timestamp: new Date().toISOString()
-      });
-    } else {
-      // This is JSON data (backward compatibility)
-      console.log("POST test data received:", req.body);
-      
-      // Return success response with received data
-      res.json({
-        status: 'success',
-        message: 'POST test successful!',
-        receivedData: req.body,
-        timestamp: new Date().toISOString()
-      });
-    }
-  } catch (error) {
-    console.error('POST test error:', error);
-    res.status(500).json({
-      status: 'error',
-      message: 'POST test failed',
-      error: error.message,
+app.post('/api/uploadTest', (req, res) => {
+  const { extractedText } = req.body;
+  
+  // If extractedText is provided, process it
+  if (extractedText) {
+    // Count words, characters and lines
+    const wordCount = extractedText.split(/\s+/).filter(word => word.length > 0).length;
+    const charCount = extractedText.length;
+    const lineCount = extractedText.split('\n').length;
+    
+    // Return the processed data
+    return res.json({
+      status: 'success',
+      message: 'Text processed successfully!',
+      data: {
+        extractedText: extractedText.substring(0, 200) + '...', // Return a preview
+        stats: {
+          wordCount,
+          charCount,
+          lineCount
+        }
+      },
       timestamp: new Date().toISOString()
     });
   }
+  
+  // Default response if no text is provided
+  res.json({
+    status: 'success',
+    message: 'Upload server is working!',
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Presigned URL endpoint for direct uploads
