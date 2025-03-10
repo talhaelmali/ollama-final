@@ -209,20 +209,22 @@ app.post("/clear", (req, res) => {
   res.json({ message: "Temizlendi" });
 });
 
-// PDF upload and analysis endpoint
-app.post("/upload", upload.single("file"), async (req, res) => {
+// PDF analysis endpoint (now accepts text directly)
+app.post("/api/pdfanalysis", express.json(), async (req, res) => {
   try {
-    const pdfPath = req.file.path;
-    const documentType = req.body.documentType;
-    const pdfText = await extractTextFromPDF(pdfPath);
+    const { text, documentType } = req.body;
+    
+    if (!text) {
+      return res.status(400).json({ error: "Metin bulunamadı" });
+    }
 
-    storedPDFContent = pdfText;
+    storedPDFContent = text;
 
     if (documentType === "signature") {
       const firstPromptJson = {
         model: config.model,
         system: "Extract only signatories in 'Name - Position' format, one per line.",
-        prompt: `List signatories from this document: ${pdfText}`,
+        prompt: `List signatories from this document: ${text}`,
         stream: false,
         options: {
           temperature: config.temperature,
@@ -253,7 +255,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
         2. Return ONLY valid JSON array
         3. No explanations or text outside JSON
         4. Ensure JSON is complete for all people`,
-        prompt: `Return ONLY a JSON array for: ${pdfText}`,
+        prompt: `Return ONLY a JSON array for: ${text}`,
         stream: false,
         options: {
           temperature: config.temperature,
@@ -295,7 +297,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       const firstPromptJson = {
         model: config.model,
         system: "Analyze the provided legal document in detail. Identify the type of document, summarize its main topic, and highlight the key legal points and clauses. Outline potential risks or issues for the bank. Provide legal recommendations or actions that may be necessary. Respond in Turkish in a professional and concise manner without mentioning the lack of a document or any hypothetical scenarios.",
-        prompt: `Analyze this legal document and provide a detailed summary: ${pdfText}`,
+        prompt: `Analyze this legal document and provide a detailed summary: ${text}`,
         stream: false,
         options: {
           temperature: config.temperature,
@@ -316,8 +318,6 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       res.json({ analysis: response.data, type: "normal" });
     }
   } catch (error) {
-    console.log("Upload file:", req.file);
-    console.log("req.body:", req.body);
     console.error("Error:", error.message);
     res.status(500).json({ error: error.message });
   }

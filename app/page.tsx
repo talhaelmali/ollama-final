@@ -87,17 +87,12 @@ export default function Home() {
 
     // Check if it's a PDF file
     if (file.type === 'application/pdf') {
-      // Ask user if they want to extract text or upload
-      if (window.confirm("PDF dosyasından metin çıkarmak ister misiniz? İptal'e basarsanız dosya sunucuya yüklenecektir.")) {
-        // Extract text from PDF
-        await extractTextFromPDF(file);
-      } else {
-        // Upload file
-        await uploadFile(file);
-      }
+      // Always extract text from PDF
+      await extractTextFromPDF(file);
     } else {
-      // Upload other file types as before
-      await uploadFile(file);
+      // For non-PDF files, alert the user
+      alert("Lütfen sadece PDF dosyası yükleyin.");
+      setFile(null);
     }
   };
 
@@ -135,7 +130,6 @@ export default function Home() {
       
       // Set the extracted text
       setExtractedText(text);
-      
       // Also set the text in the question input for convenience
       if (questionInputRef.current) {
         questionInputRef.current.value = text;
@@ -150,6 +144,29 @@ export default function Home() {
     }
   };
 
+  // Function to analyze the extracted text
+  const analyzeExtractedText = async (text: string) => {
+    setAnalysisLoading(true);
+    try {
+      const res = await fetch("/api/pdfanalysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          text: text,
+          documentType 
+        }),
+      });
+      const data = await res.json();
+      setResponse(data);
+    } catch (error) {
+      console.error("Error analyzing text:", error);
+      setResponse("Error processing the text.");
+    } finally {
+      setAnalysisLoading(false);
+    }
+  };
+
+  /*
   const uploadFile = async (file: File) => {
     try {
       // ELB sınırlamaları nedeniyle tüm dosyaları presigned URL ile yükle
@@ -254,6 +271,7 @@ export default function Home() {
       throw error;
     }
   };
+  */
 
   const handleClear = async () => {
     try {
@@ -290,26 +308,14 @@ export default function Home() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file) return alert("Lütfen bir dosya seçin.");
-    if (!apiUrl) return alert("API URL bulunamadı.");
-
-    setAnalysisLoading(true);
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("documentType", documentType);
-
-    try {
-      const res = await fetch(apiUrl + "/upload", {
-        method: "POST",
-        body: formData,
-      });
-      const data = await res.json();
-      setResponse(data);
-    } catch (error) {
-      console.error("Error uploading file:", error);
-      setResponse("Error processing the file.");
-    } finally {
-      setAnalysisLoading(false);
+    
+    // Eğer metin henüz çıkarılmamışsa uyarı ver
+    if (!extractedText) {
+      return alert("Önce PDF dosyasından metin çıkarılmalıdır.");
     }
+    
+    // Çıkarılan metni analiz et
+    await analyzeExtractedText(extractedText);
   };
 
   const handleQuestionSubmit = async (e: React.FormEvent) => {
@@ -375,13 +381,8 @@ export default function Home() {
           fileInput.files = dataTransfer.files;
         }
 
-        // Check if we should extract text or upload
-        if (window.confirm("PDF dosyasından metin çıkarmak ister misiniz? İptal'e basarsanız dosya sunucuya yüklenecektir.")) {
-          await extractTextFromPDF(droppedFile);
-        } else {
-          // Dosyayı yükle
-          await uploadFile(droppedFile);
-        }
+        // Always extract text from PDF
+        await extractTextFromPDF(droppedFile);
       } else {
         alert("Lütfen sadece PDF dosyası yükleyin.");
       }
@@ -1089,6 +1090,7 @@ export default function Home() {
             >
               <button
                 onClick={handleSubmit}
+                disabled={analysisLoading || isExtracting}
                 style={{
                   flex: 1,
                   padding: "12px",
@@ -1099,6 +1101,7 @@ export default function Home() {
                   cursor: "pointer",
                   fontSize: "14px",
                   fontWeight: "bold",
+                  opacity: analysisLoading || isExtracting ? 0.7 : 1,
                 }}
               >
                 Analiz Et
