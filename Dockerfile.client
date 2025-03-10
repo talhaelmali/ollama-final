@@ -17,6 +17,9 @@ COPY . .
 # Disable telemetry during the build
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Ensure the node_modules/.bin directory has execute permissions
+RUN chmod -R 755 node_modules/.bin
+
 # Build the application
 RUN npm run build
 
