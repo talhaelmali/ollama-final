@@ -54,6 +54,7 @@ export default function Home() {
   const [testLoading, setTestLoading] = useState(false);
   const [testLoadingUpload, setTestLoadingUpload] = useState(false);
   const [testLoadingUploadPost, setTestLoadingUploadPost] = useState(false);
+  const [testLoadingExtractedTextPost, setTestLoadingExtractedTextPost] = useState(false);
   const [uploadPostResponse, setUploadPostResponse] = useState<string>("");
 
   // PDF analysis state
@@ -751,6 +752,9 @@ export default function Home() {
       // Set the extracted text as response
       setUploadPostResponse(extractedText || "PDF dosyasından metin çıkarılamadı veya dosya boş.");
       
+      // Also set the extractedText state so the POST button becomes enabled
+      setExtractedText(extractedText);
+      
       console.log("PDF text extracted successfully");
     } catch (error) {
       console.error("Error extracting text from PDF:", error);
@@ -767,7 +771,7 @@ export default function Home() {
       return;
     }
     
-    setTestLoadingUploadPost(true);
+    setTestLoadingExtractedTextPost(true);
     setUploadPostResponse("");
     
     try {
@@ -790,7 +794,7 @@ export default function Home() {
       console.error("Error uploading extracted text:", error);
       setUploadPostResponse(`Metin yükleme hatası: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
-      setTestLoadingUploadPost(false);
+      setTestLoadingExtractedTextPost(false);
     }
   };
 
@@ -895,10 +899,10 @@ export default function Home() {
             </Button>
             <Button 
               onClick={testUploadExtractedText} 
-              disabled={testLoadingUploadPost || !extractedText}
+              disabled={testLoadingExtractedTextPost || !extractedText}
               className="bg-green-600 hover:bg-green-700"
             >
-              {testLoadingUploadPost ? "İşleniyor..." : "Çıkarılan Metni POST ile Gönder"}
+              {testLoadingExtractedTextPost ? "İşleniyor..." : "Çıkarılan Metni POST ile Gönder"}
             </Button>
           </div>
         </div>
