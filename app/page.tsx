@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import Image from "next/image";
@@ -27,18 +27,20 @@ interface K8sResponse {
 }
 
 interface ChatMessage {
-  type: 'question' | 'answer' | 'error';
+  type: "question" | "answer" | "error";
   text: string;
 }
 
 export default function Home() {
   // K8s services state
   const [data, setData] = useState<K8sResponse>({ services: [], count: 0 });
-  const [error, setError] = useState<string>('');
+  const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(true);
-  const [serverResponse, setServerResponse] = useState<string>('');
+  const [serverResponse, setServerResponse] = useState<string>("");
+  const [serverResponseUpload, setServerResponseUpload] = useState<string>("");
   const [testLoading, setTestLoading] = useState(false);
-  
+  const [testLoadingUpload, setTestLoadingUpload] = useState(false);
+
   // PDF analysis state
   const [baseUrl, setBaseUrl] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -49,24 +51,29 @@ export default function Home() {
   const [dragActive, setDragActive] = useState(false);
   const [documentType, setDocumentType] = useState("signature");
   const [apiUrl, setApiUrl] = useState<string | null>(null);
-  const [message, setMessage] = useState('');
-  const [aiResponse, setAiResponse] = useState('');
+  const [message, setMessage] = useState("");
+  const [aiResponse, setAiResponse] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
 
   // File handling functions
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const files = event.target.files;
     if (!files) return;
     const file = files[0];
     if (!file) return;
-  
+
     await uploadFile(file);
   };
 
   const uploadFile = async (file: File) => {
     try {
       // ELB sınırlamaları nedeniyle tüm dosyaları presigned URL ile yükle
-      console.log("Tüm dosyalar için presigned URL upload kullanılıyor - dosya boyutu:", file.size);
+      console.log(
+        "Tüm dosyalar için presigned URL upload kullanılıyor - dosya boyutu:",
+        file.size
+      );
       await presignedUrlUpload(file);
     } catch (error) {
       console.error("Error uploading file:", error);
@@ -82,12 +89,12 @@ export default function Home() {
       const presignedUrlResponse = await fetch("/api/upload", {
         method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           fileName: file.name,
           fileType: file.type,
-          fileSize: file.size
+          fileSize: file.size,
         }),
       });
 
@@ -99,27 +106,29 @@ export default function Home() {
 
       const presignedData = await presignedUrlResponse.json();
       console.log("Presigned URL alındı:", presignedData);
-      
-      if (presignedData.strategy !== 'direct-upload' || !presignedData.url) {
+
+      if (presignedData.strategy !== "direct-upload" || !presignedData.url) {
         throw new Error("Beklenen upload stratejisi alınamadı");
       }
 
       // 2. Dosyayı doğrudan upload URL'ine yükle
       const uploadFormData = new FormData();
-      
+
       // Gerekli diğer alanları ekle (form fields)
       if (presignedData.fields) {
-        Object.entries(presignedData.fields).forEach(([fieldName, fieldValue]) => {
-          uploadFormData.append(fieldName, fieldValue as string);
-        });
+        Object.entries(presignedData.fields).forEach(
+          ([fieldName, fieldValue]) => {
+            uploadFormData.append(fieldName, fieldValue as string);
+          }
+        );
       }
-      
+
       // Dosyayı ekle (file nesnesi en son eklenmeli)
-      uploadFormData.append('file', file);
+      uploadFormData.append("file", file);
 
       console.log("Dosya yükleniyor...");
       const uploadResponse = await fetch(presignedData.url, {
-        method: 'POST',
+        method: "POST",
         body: uploadFormData,
       });
 
@@ -132,19 +141,19 @@ export default function Home() {
       console.log("Dosya başarıyla yüklendi!");
       const uploadResult = await uploadResponse.json();
       console.log("Upload sonucu:", uploadResult);
-      
+
       // 3. Yükleme işlemini backend'e bildir
       console.log("Finalize isteği gönderiliyor...");
       const finalizeResponse = await fetch("/api/upload/finalize", {
         method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           key: presignedData.key,
           fileName: file.name,
           fileSize: file.size,
-          fileType: file.type
+          fileType: file.type,
         }),
       });
 
@@ -195,7 +204,6 @@ export default function Home() {
     }
   };
 
-    
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file) return alert("Lütfen bir dosya seçin.");
@@ -226,10 +234,7 @@ export default function Home() {
     if (!question.trim() || !apiUrl) return;
 
     const userQuestion = question.trim();
-    setChatHistory([
-      ...chatHistory,
-      { type: "question", text: userQuestion },
-    ]);
+    setChatHistory([...chatHistory, { type: "question", text: userQuestion }]);
     setQuestion("");
 
     try {
@@ -239,14 +244,14 @@ export default function Home() {
         body: JSON.stringify({ message: userQuestion, documentType }),
       });
       const data = await res.json();
-      
+
       // Server yanıtını doğru şekilde işle
-      const responseText = data.response || (data.reply && data.reply.message && data.reply.message.content) || "Yanıt alınamadı.";
-      
-      setChatHistory([
-        ...chatHistory,
-        { type: "answer", text: responseText },
-      ]);
+      const responseText =
+        data.response ||
+        (data.reply && data.reply.message && data.reply.message.content) ||
+        "Yanıt alınamadı.";
+
+      setChatHistory([...chatHistory, { type: "answer", text: responseText }]);
     } catch (error) {
       console.error("Chat error:", error);
       setChatHistory([
@@ -278,13 +283,15 @@ export default function Home() {
       if (droppedFile.type === "application/pdf") {
         setFile(droppedFile);
         // Input alanını da güncelle
-        const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+        const fileInput = document.querySelector(
+          'input[type="file"]'
+        ) as HTMLInputElement;
         if (fileInput) {
           const dataTransfer = new DataTransfer();
           dataTransfer.items.add(droppedFile);
           fileInput.files = dataTransfer.files;
         }
-        
+
         // Dosyayı yükle
         await uploadFile(droppedFile);
       } else {
@@ -296,7 +303,7 @@ export default function Home() {
   // Signatory table component
   const signatoryTable = (content: string | null) => {
     if (!content) return null;
-    
+
     const parseContent = (text: string) => {
       return text
         .split("\n")
@@ -545,17 +552,17 @@ export default function Home() {
   useEffect(() => {
     const fetchServices = async () => {
       try {
-        const response = await fetch('/api/k8s/services');
+        const response = await fetch("/api/k8s/services");
         const result: K8sResponse = await response.json();
-        
+
         if (result.error) {
           setError(result.error);
         } else {
           setData(result);
         }
       } catch (err) {
-        setError('Failed to fetch Kubernetes services');
-        console.error('Error:', err);
+        setError("Failed to fetch Kubernetes services");
+        console.error("Error:", err);
       } finally {
         setLoading(false);
       }
@@ -566,42 +573,63 @@ export default function Home() {
 
   const testServer = async () => {
     setTestLoading(true);
-    setServerResponse('');
+    setServerResponse("");
     try {
-      const response = await fetch('/api/test');
+      const response = await fetch("/api/test");
       const result = await response.json();
       setServerResponse(JSON.stringify(result, null, 2));
     } catch (err) {
-      setServerResponse('Failed to connect to the server: ' + (err instanceof Error ? err.message : String(err)));
+      setServerResponse(
+        "Failed to connect to the server: " +
+          (err instanceof Error ? err.message : String(err))
+      );
     } finally {
       setTestLoading(false);
+    }
+  };
+  const testServerUpload = async () => {
+    setTestLoadingUpload(true);
+    setServerResponseUpload("");
+    try {
+      const response = await fetch("/api/uploadTest");
+      const result = await response.json();
+      setServerResponseUpload(JSON.stringify(result, null, 2));
+    } catch (err) {
+      setServerResponseUpload(
+        "Failed to connect to the server: " +
+          (err instanceof Error ? err.message : String(err))
+      );
+    } finally {
+      setTestLoadingUpload(false);
     }
   };
 
   const handleChat = async () => {
     if (!message.trim()) return;
-    
+
     setChatLoading(true);
-    setAiResponse('');
-    
+    setAiResponse("");
+
     try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
+      const response = await fetch("/api/chat", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify({ message })
+        body: JSON.stringify({ message }),
       });
-      
+
       const data = await response.json();
-      
+
       if (data.error) {
         throw new Error(data.error);
       }
-      
+
       setAiResponse(data.response);
     } catch (err) {
-      setAiResponse('Error: ' + (err instanceof Error ? err.message : String(err)));
+      setAiResponse(
+        "Error: " + (err instanceof Error ? err.message : String(err))
+      );
     } finally {
       setChatLoading(false);
     }
@@ -653,14 +681,33 @@ export default function Home() {
           <h1 className="text-3xl font-bold text-card-foreground">
             Kubernetes Services ({data.count})
           </h1>
-          <Button 
-            onClick={testServer}
-            disabled={testLoading}
-          >
-            {testLoading ? 'Testing...' : 'Test Server'}
+          <Button onClick={testServer} disabled={testLoading}>
+            {testLoading ? "Testing..." : "Test Server"}
+          </Button>
+          <Button onClick={testServerUpload} disabled={testLoadingUpload}>
+            {testLoadingUpload ? "Testing..." : "Test upload Server"}
           </Button>
         </div>
-
+        {serverResponse && (
+          <div className="bg-card p-4 rounded-lg shadow-lg mb-6">
+            <h2 className="text-xl font-semibold text-card-foreground mb-2">
+              Server Response:
+            </h2>
+            <pre className="bg-muted p-4 rounded-md overflow-x-auto">
+              {serverResponse}
+            </pre>
+          </div>
+        )}
+        {serverResponseUpload && (
+          <div className="bg-card p-4 rounded-lg shadow-lg mb-6">
+            <h2 className="text-xl font-semibold text-card-foreground mb-2">
+              Server Response:
+            </h2>
+            <pre className="bg-muted p-4 rounded-md overflow-x-auto">
+              {serverResponseUpload}
+            </pre>
+          </div>
+        )}
         {/* PDF Analysis Interface */}
         <div
           style={{
@@ -671,8 +718,9 @@ export default function Home() {
             gap: "20px",
             padding: "25px",
             borderRadius: "12px",
-            boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
-            marginBottom: "2rem"
+            boxShadow:
+              "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+            marginBottom: "2rem",
           }}
         >
           {/* Left Section */}
@@ -711,17 +759,10 @@ export default function Home() {
                 onDragLeave={handleDrag}
                 onDragOver={handleDrag}
                 onDrop={handleDrop}
-                onClick={() =>
-                  document.getElementById("fileInput")?.click()
-                }
+                onClick={() => document.getElementById("fileInput")?.click()}
                 style={dropAreaStyle}
               >
-                <Image
-                  src="/arrow.png"
-                  alt="Arrow"
-                  width={80}
-                  height={50}
-                />
+                <Image src="/arrow.png" alt="Arrow" width={80} height={50} />
                 <p
                   style={{
                     margin: "0",
@@ -731,9 +772,7 @@ export default function Home() {
                     fontStyle: "italic",
                   }}
                 >
-                  {file
-                    ? file.name
-                    : "Yalnızca pdf formatlı dosya yükleyiniz"}
+                  {file ? file.name : "Yalnızca pdf formatlı dosya yükleyiniz"}
                 </p>
                 <input
                   type="file"
@@ -758,12 +797,7 @@ export default function Home() {
                   }}
                 >
                   {file ? "Dosyayı Değiştir" : "Buraya Yükleyiniz"}
-                  <Image
-                    src="/send.png"
-                    alt="Upload"
-                    width={24}
-                    height={24}
-                  />
+                  <Image src="/send.png" alt="Upload" width={24} height={24} />
                 </button>
               </div>
             </div>
@@ -779,7 +813,7 @@ export default function Home() {
               }}
             >
               <h3
-              className='mt-20'
+                className="mt-20"
                 style={{
                   color: "#2B5A24",
                   fontSize: "16px",
@@ -883,9 +917,7 @@ export default function Home() {
                   display: "flex",
                   flexDirection: "column",
                   justifyContent:
-                    chatHistory.length === 0
-                      ? "center"
-                      : "flex-start",
+                    chatHistory.length === 0 ? "center" : "flex-start",
                   alignItems: "center",
                 }}
               >
@@ -904,19 +936,12 @@ export default function Home() {
                         margin: "5px 0",
                         padding: "10px 15px",
                         backgroundColor:
-                          msg.type === "question"
-                            ? "#4CAF50"
-                            : "#f5f5f5",
-                        color:
-                          msg.type === "question"
-                            ? "white"
-                            : "#333",
+                          msg.type === "question" ? "#4CAF50" : "#f5f5f5",
+                        color: msg.type === "question" ? "white" : "#333",
                         borderRadius: "5px",
                         maxWidth: "80%",
                         alignSelf:
-                          msg.type === "question"
-                            ? "flex-end"
-                            : "flex-start",
+                          msg.type === "question" ? "flex-end" : "flex-start",
                         width: "fit-content",
                       }}
                     >
@@ -1019,9 +1044,7 @@ export default function Home() {
                 flex: 1,
                 overflowY: "auto",
                 backgroundColor:
-                  documentType !== "signature"
-                    ? "#F9F9F9"
-                    : "transparent",
+                  documentType !== "signature" ? "#F9F9F9" : "transparent",
                 borderRadius: "8px",
                 padding: documentType !== "signature" ? "15px" : "0",
               }}
@@ -1044,15 +1067,8 @@ export default function Home() {
         </div>
 
         {/* Original K8s Services Section */}
-        {serverResponse && (
-          <div className="bg-card p-4 rounded-lg shadow-lg mb-6">
-            <h2 className="text-xl font-semibold text-card-foreground mb-2">Server Response:</h2>
-            <pre className="bg-muted p-4 rounded-md overflow-x-auto">
-              {serverResponse}
-            </pre>
-          </div>
-        )}
-        
+
+
         {/* <div className="grid gap-6">
           {data.services.map((service) => (
             <div key={`${service.namespace}-${service.name}`} className="bg-card p-6 rounded-lg shadow-lg">

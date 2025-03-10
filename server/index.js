@@ -64,6 +64,15 @@ app.get('/test', (req, res) => {
   });
 });
 
+// Test endpoint
+app.get('/uploadTest', (req, res) => {
+  res.json({
+    status: 'success',
+    message: 'Upload server is working!',
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Presigned URL endpoint for direct uploads
 app.post("/api/upload/presigned", async (req, res) => {
   try {
@@ -371,5 +380,5 @@ if (!fs.existsSync(config.uploadDir)) {
 
 // Start the server
 app.listen(port, '0.0.0.0', () => {
-  console.log(`Server is running on http://0.0.0.0:${port}`);
+  console.log(`Server is running on http://localhost:3000`);
 });
