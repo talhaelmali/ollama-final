@@ -74,18 +74,46 @@ app.get('/uploadTest', (req, res) => {
 });
 
 // Test POST endpoint for uploads - simple version
-app.post('/api/uploadTest', async (req, res) => {
+app.post('/api/uploadTest', upload.single('file'), async (req, res) => {
   try {
-    // Log received data
-    console.log("POST test data received:", req.body);
-    
-    // Return success response with received data
-    res.json({
-      status: 'success',
-      message: 'POST test successful!',
-      receivedData: req.body,
-      timestamp: new Date().toISOString()
-    });
+    // Check if this is a file upload or JSON data
+    if (req.file) {
+      // This is a file upload
+      console.log("File upload received:", req.file);
+      
+      // Check if the file is a PDF
+      if (!req.file.mimetype || req.file.mimetype !== 'application/pdf') {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Only PDF files are allowed',
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      // Return success response with file info
+      res.json({
+        status: 'success',
+        message: 'PDF dosyası başarıyla yüklendi!',
+        fileInfo: {
+          filename: req.file.filename,
+          originalName: req.file.originalname,
+          size: req.file.size,
+          mimetype: req.file.mimetype
+        },
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      // This is JSON data (backward compatibility)
+      console.log("POST test data received:", req.body);
+      
+      // Return success response with received data
+      res.json({
+        status: 'success',
+        message: 'POST test successful!',
+        receivedData: req.body,
+        timestamp: new Date().toISOString()
+      });
+    }
   } catch (error) {
     console.error('POST test error:', error);
     res.status(500).json({

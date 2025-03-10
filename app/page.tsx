@@ -610,28 +610,41 @@ export default function Home() {
   const testUploadPost = async () => {
     setTestLoadingUploadPost(true);
     setUploadPostResponse("");
+    
+    // Get the file input element
+    const fileInput = document.getElementById('pdfTestUpload') as HTMLInputElement;
+    
+    if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+      setUploadPostResponse("Lütfen bir PDF dosyası seçin.");
+      setTestLoadingUploadPost(false);
+      return;
+    }
+    
+    const pdfFile = fileInput.files[0];
+    
+    // Check if the file is a PDF
+    if (pdfFile.type !== 'application/pdf') {
+      setUploadPostResponse("Lütfen sadece PDF dosyası yükleyin.");
+      setTestLoadingUploadPost(false);
+      return;
+    }
+    
     try {
-      // Simple test data
-      const testData = {
-        name: "Test User",
-        message: "Hello from client!",
-        timestamp: new Date().toISOString()
-      };
+      // Create form data
+      const formData = new FormData();
+      formData.append('file', pdfFile);
       
-      // Send POST request with JSON data
+      // Send POST request with FormData
       const response = await fetch("/api/uploadTest", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(testData)
+        body: formData
       });
       
       const result = await response.json();
       setUploadPostResponse(JSON.stringify(result, null, 2));
     } catch (err) {
       setUploadPostResponse(
-        "Failed to test POST: " +
+        "Failed to test PDF upload: " +
           (err instanceof Error ? err.message : String(err))
       );
     } finally {
@@ -716,46 +729,67 @@ export default function Home() {
           <h1 className="text-3xl font-bold text-card-foreground">
             Kubernetes Services ({data.count})
           </h1>
-          <Button onClick={testServer} disabled={testLoading}>
-            {testLoading ? "Testing..." : "Test Server"}
-          </Button>
-          <Button onClick={testServerUpload} disabled={testLoadingUpload}>
-            {testLoadingUpload ? "Testing..." : "Test upload Server"}
-          </Button>
-          <Button onClick={testUploadPost} disabled={testLoadingUploadPost} className="ml-2">
-            {testLoadingUploadPost ? "Testing..." : "Test POST"}
-          </Button>
+          
+          {/* Server Test Buttons */}
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={testServer} disabled={testLoading}>
+              {testLoading ? "Testing..." : "Test Server"}
+            </Button>
+            <Button onClick={testServerUpload} disabled={testLoadingUpload}>
+              {testLoadingUpload ? "Testing..." : "Test upload Server"}
+            </Button>
+          </div>
+          
+          {/* PDF Upload Test Section */}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <input
+              type="file"
+              id="pdfTestUpload"
+              accept="application/pdf"
+              className="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+            />
+            <Button onClick={testUploadPost} disabled={testLoadingUploadPost}>
+              {testLoadingUploadPost ? "Yükleniyor..." : "PDF Dosyası Yükle"}
+            </Button>
+          </div>
         </div>
-        {serverResponse && (
-          <div className="bg-card p-4 rounded-lg shadow-lg mb-6">
-            <h2 className="text-xl font-semibold text-card-foreground mb-2">
-              Server Response:
-            </h2>
-            <pre className="bg-muted p-4 rounded-md overflow-x-auto">
-              {serverResponse}
-            </pre>
-          </div>
-        )}
-        {serverResponseUpload && (
-          <div className="bg-card p-4 rounded-lg shadow-lg mb-6">
-            <h2 className="text-xl font-semibold text-card-foreground mb-2">
-              Upload Server Response:
-            </h2>
-            <pre className="bg-muted p-4 rounded-md overflow-x-auto">
-              {serverResponseUpload}
-            </pre>
-          </div>
-        )}
-        {uploadPostResponse && (
-          <div className="bg-card p-4 rounded-lg shadow-lg mb-6">
-            <h2 className="text-xl font-semibold text-card-foreground mb-2">
-               POST Test Response:
-            </h2>
-            <pre className="bg-muted p-4 rounded-md overflow-x-auto">
-              {uploadPostResponse}
-            </pre>
-          </div>
-        )}
+        
+        {/* Response Sections */}
+        <div className="space-y-4 mb-6">
+          {serverResponse && (
+            <div className="bg-card p-4 rounded-lg shadow-lg">
+              <h2 className="text-xl font-semibold text-card-foreground mb-2">
+                Server Response:
+              </h2>
+              <pre className="bg-muted p-4 rounded-md overflow-x-auto text-sm">
+                {serverResponse}
+              </pre>
+            </div>
+          )}
+          
+          {serverResponseUpload && (
+            <div className="bg-card p-4 rounded-lg shadow-lg">
+              <h2 className="text-xl font-semibold text-card-foreground mb-2">
+                Upload Server Response:
+              </h2>
+              <pre className="bg-muted p-4 rounded-md overflow-x-auto text-sm">
+                {serverResponseUpload}
+              </pre>
+            </div>
+          )}
+          
+          {uploadPostResponse && (
+            <div className="bg-card p-4 rounded-lg shadow-lg">
+              <h2 className="text-xl font-semibold text-card-foreground mb-2">
+                PDF Yükleme Sonucu:
+              </h2>
+              <pre className="bg-muted p-4 rounded-md overflow-x-auto text-sm">
+                {uploadPostResponse}
+              </pre>
+            </div>
+          )}
+        </div>
+        
         {/* PDF Analysis Interface */}
         <div
           style={{
@@ -1113,51 +1147,6 @@ export default function Home() {
             </div>
           </div>
         </div>
-
-        {/* Original K8s Services Section */}
-
-
-        {/* <div className="grid gap-6">
-          {data.services.map((service) => (
-            <div key={`${service.namespace}-${service.name}`} className="bg-card p-6 rounded-lg shadow-lg">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold text-card-foreground">
-                  {service.name}
-                </h2>
-                <span className="px-3 py-1 bg-primary/10 rounded-full text-sm text-primary">
-                  {service.type}
-                </span>
-              </div>
-              
-              <div className="space-y-2 text-sm text-muted-foreground">
-                <p>Namespace: {service.namespace}</p>
-                <p>Cluster IP: {service.clusterIP}</p>
-                
-                <div>
-                  <p className="font-medium text-card-foreground">Ports:</p>
-                  <ul className="ml-4 space-y-1">
-                    {service.ports.map((port, idx) => (
-                      <li key={idx}>
-                        {port.port} → {port.targetPort} ({port.protocol})
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                {service.externalUrls.length > 0 && (
-                  <div>
-                    <p className="font-medium text-card-foreground">External URLs:</p>
-                    <ul className="ml-4 space-y-1">
-                      {service.externalUrls.map((url, idx) => (
-                        <li key={idx}>{url}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-        </div> */}
       </div>
     </div>
   );
