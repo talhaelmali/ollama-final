@@ -236,10 +236,16 @@ export default function Home() {
       const data = await res.json();
 
       // Server yanıtını doğru şekilde işle
-      const responseText =
-        data.response ||
-        (data.reply && data.reply.message && data.reply.message.content) ||
-        "Yanıt alınamadı.";
+      let responseText = "Yanıt alınamadı.";
+      
+      if (typeof data.response === 'string') {
+        responseText = data.response;
+      } else if (data.response && typeof data.response === 'object') {
+        // Eğer response bir nesne ise, JSON.stringify ile string'e çevirelim
+        responseText = JSON.stringify(data.response, null, 2);
+      } else if (data.reply && data.reply.message && data.reply.message.content) {
+        responseText = data.reply.message.content;
+      }
 
       setChatHistory([...chatHistory, { type: "answer", text: responseText }]);
     } catch (error) {

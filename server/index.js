@@ -374,7 +374,15 @@ app.post('/api/chat', async (req, res) => {
         }
       );
 
-      return res.json({ response: response.data.response || response.data });
+      // Yanıtı doğru şekilde işle
+      let responseData = response.data.response || response.data;
+      
+      // Eğer yanıt bir nesne ise, string'e çevir
+      if (responseData && typeof responseData === 'object') {
+        responseData = JSON.stringify(responseData);
+      }
+
+      return res.json({ response: responseData });
     } catch (error) {
       console.error("Error:", error.message);
       return res.status(500).json({
@@ -398,7 +406,16 @@ app.post('/api/chat', async (req, res) => {
     });
 
     const data = await response.json();
-    res.json({ response: data.response });
+    
+    // Yanıtı doğru şekilde işle
+    let responseData = data.response;
+    
+    // Eğer yanıt bir nesne ise, string'e çevir
+    if (responseData && typeof responseData === 'object') {
+      responseData = JSON.stringify(responseData);
+    }
+    
+    res.json({ response: responseData });
     
   } catch (error) {
     console.error('Error calling Ollama:', error);
