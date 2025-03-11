@@ -136,13 +136,11 @@ export default function Home() {
       
       // Set the extracted text
       setExtractedText(text);
-      console.log(text);
       // Also set the text in the question input for convenience
       if (questionInputRef.current) {
         questionInputRef.current.value = text;
       }
       
-      console.log("PDF metin çıkartıldı");
     } catch (error) {
       console.error("Error extracting text from PDF:", error);
       alert("PDF metin çıkarma hatası: " + (error as Error).message);
@@ -248,11 +246,8 @@ export default function Home() {
       
       if (typeof data.response === 'string') {
         responseText = data.response;
-      } else if (data.response && typeof data.response === 'object') {
-        // Eğer response bir nesne ise, JSON.stringify ile string'e çevirelim
-        responseText = JSON.stringify(data.response, null, 2);
-      } else if (data.reply && data.reply.message && data.reply.message.content) {
-        responseText = data.reply.message.content;
+      } else if (data.error) {
+        responseText = `Hata: ${data.error}`;
       }
 
       setChatHistory([...chatHistory, { type: "answer", text: responseText }]);
@@ -650,11 +645,6 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-7xl mx-auto p-4">
-        <div className="flex items-center justify-between mb-8">
-          <h1 className="text-3xl font-bold text-card-foreground">
-            Kubernetes Services ({data.count})
-          </h1>
-        </div>
 
         {/* PDF Analysis Interface */}
         <div

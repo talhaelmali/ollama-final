@@ -1,3 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama-service
+  namespace: default
+spec:
+  selector:
+    app: ollama
+  ports:
+  - port: 11434
+    targetPort: 11434
+  type: ClusterIP
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -16,35 +29,27 @@ spec:
       containers:
       - name: ollama
         image: ollama/ollama:latest
-        command: ["/bin/sh", "-c"]
-        args:
-          - "OLLAMA_LLM_LIBRARY=cuda OLLAMA_FORCE_GPU=true ollama serve"
         ports:
         - containerPort: 11434
+        lifecycle:
+          postStart:
+            exec:
+              command: ["/bin/sh", "-c", "ollama pull llama3.1:8b"]
         securityContext:
           privileged: true
         volumeMounts:
           - name: ollama-data
             mountPath: /root/.ollama
-        env:
-          - name: OLLAMA_LLM_LIBRARY
-            value: "cuda"
-          - name: OLLAMA_FORCE_GPU
-            value: "true"
-          - name: OLLAMA_NUM_PARALLEL
-            value: "2"
-          - name: OLLAMA_GPU_OVERHEAD
-            value: "0"
-          - name: CUDA_VISIBLE_DEVICES
-            value: "0"
         resources:
           requests:
             nvidia.com/gpu: "1"
             memory: "4Gi"
+            cpu: "2"
           limits:
             nvidia.com/gpu: "1"
             memory: "8Gi"
+            cpu: "4"
       volumes:
         - name: ollama-data
           persistentVolumeClaim:
-            claimName: ollama-pvc
+            claimName: ollama-pvc
