@@ -227,6 +227,7 @@ app.post("/api/pdfanalysis", express.json(), async (req, res) => {
         },
       };
 
+      /* İkinci prompt yorum satırına alındı
       const secondPromptJson = {
         model: config.model,
         system: `You are analyzing a signature circular (İmza Sirküleri). Create a valid JSON array containing signature authorities.
@@ -257,7 +258,31 @@ app.post("/api/pdfanalysis", express.json(), async (req, res) => {
           num_ctx: config.num_ctx,
         },
       };
+      */
 
+      // Sadece ilk prompt için istek gönderiyoruz
+      axios.post(
+        `${apiUrl}/api/generate`,
+        firstPromptJson,
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      )
+      .then(response => {
+        res.json({
+          analysis: response.data,
+          secondAnalysis: null, // İkinci analiz şu an kullanılmıyor ama null olarak gönderiyoruz
+          type: "signature",
+        });
+      })
+      .catch(error => {
+        console.error("Error in signature analysis:", error.message);
+        res.status(500).json({ error: error.message });
+      });
+
+      /* Promise.all ile ikinci prompt'u da bekleyen kod yorum satırına alındı
       const firstResponsePromise = axios.post(
         `${apiUrl}/api/generate`,
         firstPromptJson,
@@ -288,6 +313,7 @@ app.post("/api/pdfanalysis", express.json(), async (req, res) => {
         secondAnalysis: secondResponse.data,
         type: "signature",
       });
+      */
     } else {
       const firstPromptJson = {
         model: config.model,
@@ -374,15 +400,22 @@ app.post('/api/chat', async (req, res) => {
         }
       );
 
-      // Yanıtı doğru şekilde işle
-      let responseData = response.data.response || response.data;
+      // Ollama API yanıt formatına göre doğru şekilde yanıtı al
+      let responseText = "Yanıt alınamadı.";
       
-      // Eğer yanıt bir nesne ise, string'e çevir
-      if (responseData && typeof responseData === 'object') {
-        responseData = JSON.stringify(responseData);
+      if (response.data && response.data.message && response.data.message.content) {
+        // Yeni Ollama API formatı
+        responseText = response.data.message.content;
+      } else if (response.data && response.data.response) {
+        // Eski Ollama API formatı
+        responseText = response.data.response;
+      } else if (typeof response.data === 'string') {
+        // Doğrudan string yanıt
+        responseText = response.data;
       }
 
-      return res.json({ response: responseData });
+      // Sadece yanıt metnini döndür
+      return res.json({ response: responseText });
     } catch (error) {
       console.error("Error:", error.message);
       return res.status(500).json({
@@ -407,15 +440,8 @@ app.post('/api/chat', async (req, res) => {
 
     const data = await response.json();
     
-    // Yanıtı doğru şekilde işle
-    let responseData = data.response;
-    
-    // Eğer yanıt bir nesne ise, string'e çevir
-    if (responseData && typeof responseData === 'object') {
-      responseData = JSON.stringify(responseData);
-    }
-    
-    res.json({ response: responseData });
+    // Yanıtı doğru şekilde işle - sadece response içeriğini döndür
+    res.json({ response: data.response });
     
   } catch (error) {
     console.error('Error calling Ollama:', error);
