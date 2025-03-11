@@ -227,39 +227,6 @@ app.post("/api/pdfanalysis", express.json(), async (req, res) => {
         },
       };
 
-      /* İkinci prompt yorum satırına alındı
-      const secondPromptJson = {
-        model: config.model,
-        system: `You are analyzing a signature circular (İmza Sirküleri). Create a valid JSON array containing signature authorities.
-        Keep responses concise and ensure the JSON is complete. Format:
-        
-        [{
-        "yetkili_kişi": "Full name of the authorized person",
-        "işlem_tipi": "List all transaction types they are authorized for",
-        "yetkisi_olduğu_hesap": "Account numbers they have authority over, or 'Bilgi Bulunamadı'",
-        "tutar_limit": number or "Bilgi Bulunamadı",
-        "para_birimi": "TL", "USD", "EUR" or "Bilgi Bulunamadı",
-        "temsil_şekli": "Münferit" or "Müşterek"
-        }]
-        
-        For Müşterek (joint) signatures:
-        - "gerekli_ortak_sayısı": "Number of required joint signatures"
-        - "temsil_ortakları": ["Name1", "Name2"]
-        
-        Rules:
-        1. Keep responses brief
-        2. Return ONLY valid JSON array
-        3. No explanations or text outside JSON
-        4. Ensure JSON is complete for all people`,
-        prompt: `Return ONLY a JSON array for: ${text}`,
-        stream: false,
-        options: {
-          temperature: config.temperature,
-          num_ctx: config.num_ctx,
-        },
-      };
-      */
-
       // Sadece ilk prompt için istek gönderiyoruz
       axios.post(
         `${apiUrl}/api/generate`,
@@ -281,39 +248,6 @@ app.post("/api/pdfanalysis", express.json(), async (req, res) => {
         console.error("Error in signature analysis:", error.message);
         res.status(500).json({ error: error.message });
       });
-
-      /* Promise.all ile ikinci prompt'u da bekleyen kod yorum satırına alındı
-      const firstResponsePromise = axios.post(
-        `${apiUrl}/api/generate`,
-        firstPromptJson,
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      const secondResponsePromise = axios.post(
-        `${apiUrl}/api/generate`,
-        secondPromptJson,
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      const [firstResponse, secondResponse] = await Promise.all([
-        firstResponsePromise,
-        secondResponsePromise,
-      ]);
-
-      res.json({
-        analysis: firstResponse.data,
-        secondAnalysis: secondResponse.data,
-        type: "signature",
-      });
-      */
     } else {
       const firstPromptJson = {
         model: config.model,
@@ -340,6 +274,66 @@ app.post("/api/pdfanalysis", express.json(), async (req, res) => {
     }
   } catch (error) {
     console.error("Error:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// JSON Analysis endpoint for signature documents
+app.post("/api/jsonanalysis", express.json(), async (req, res) => {
+  try {
+    const { text } = req.body;
+    
+    if (!text) {
+      return res.status(400).json({ error: "Metin bulunamadı" });
+    }
+
+    const jsonPromptJson = {
+      model: config.model,
+      system: `You are analyzing a signature circular (İmza Sirküleri). Create a valid JSON array containing signature authorities.
+      Keep responses concise and ensure the JSON is complete. Format:
+      
+      [{
+      "yetkili_kişi": "Full name of the authorized person",
+      "işlem_tipi": "List all transaction types they are authorized for",
+      "yetkisi_olduğu_hesap": "Account numbers they have authority over, or 'Bilgi Bulunamadı'",
+      "tutar_limit": number or "Bilgi Bulunamadı",
+      "para_birimi": "TL", "USD", "EUR" or "Bilgi Bulunamadı",
+      "temsil_şekli": "Münferit" or "Müşterek"
+      }]
+      
+      For Müşterek (joint) signatures:
+      - "gerekli_ortak_sayısı": "Number of required joint signatures"
+      - "temsil_ortakları": ["Name1", "Name2"]
+      
+      Rules:
+      1. Keep responses brief
+      2. Return ONLY valid JSON array
+      3. No explanations or text outside JSON
+      4. Ensure JSON is complete for all people`,
+      prompt: `Return ONLY a JSON array for: ${text}`,
+      stream: false,
+      options: {
+        temperature: config.temperature,
+        num_ctx: config.num_ctx,
+      },
+    };
+
+    const response = await axios.post(
+      `${apiUrl}/api/generate`,
+      jsonPromptJson,
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    res.json({
+      analysis: response.data,
+      type: "signature_json"
+    });
+  } catch (error) {
+    console.error("Error in JSON analysis:", error.message);
     res.status(500).json({ error: error.message });
   }
 });
@@ -449,37 +443,6 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
-// Test chat endpoint
-app.post('/api/testchat', async (req, res) => {
-  try {
-    const { message } = req.body;
-    
-    if (!message) {
-      return res.status(400).json({ error: 'Message is required' });
-    }
-
-    const promptJson = {
-      model: config.model,
-      system: "chat with the user",
-      prompt: message,
-    };
-
-    const response = await axios.post(
-      `${apiUrl}/api/generate`,
-      promptJson,
-      {
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-    res.json({ response: response.data.response });
-  } catch (error) {
-    console.error("Error in test chat:", error.message);
-    res.status(500).json({ error: error.message });
-  }
-});
 
 // Create uploads directory if it doesn't exist
 if (!fs.existsSync(config.uploadDir)) {

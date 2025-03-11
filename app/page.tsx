@@ -74,6 +74,10 @@ export default function Home() {
   const [extractedText, setExtractedText] = useState<string>("");
   const [isExtracting, setIsExtracting] = useState<boolean>(false);
   const questionInputRef = useRef<HTMLTextAreaElement>(null);
+  // JSON analizi için yeni state'ler
+  const [jsonAnalysis, setJsonAnalysis] = useState<any>(null);
+  const [jsonLoading, setJsonLoading] = useState(false);
+  const [jsonProcessed, setJsonProcessed] = useState(false);
 
   // Test chat state
   const [testMessage, setTestMessage] = useState("");
@@ -171,12 +175,42 @@ export default function Home() {
     }
   };
 
+  // JSON analizi için yeni fonksiyon
+  const analyzeJsonData = async () => {
+    if (!extractedText) return;
+    
+    setJsonLoading(true);
+    setJsonProcessed(false);
+    
+    try {
+      const res = await fetch("/api/jsonanalysis", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json" 
+        },
+        body: JSON.stringify({ 
+          text: extractedText
+        }),
+      });
+      const data = await res.json();
+      setJsonAnalysis(data);
+      setJsonProcessed(true);
+    } catch (error) {
+      console.error("Error analyzing JSON:", error);
+      setJsonAnalysis(null);
+    } finally {
+      setJsonLoading(false);
+    }
+  };
+
   const handleClear = async () => {
     try {
       setFile(null);
       setResponse(null);
       setChatHistory([]);
       setExtractedText("");
+      setJsonAnalysis(null);
+      setJsonProcessed(false);
       
       // Soru input alanını da temizle
       if (questionInputRef.current) {
@@ -188,21 +222,42 @@ export default function Home() {
   };
 
   const handleDownloadJSON = () => {
-    if (response?.secondAnalysis?.response) {
-      const jsonString = JSON.stringify(
-        response.secondAnalysis.response,
-        null,
-        2
-      );
-      const blob = new Blob([jsonString], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "analysis_result.json";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+    if (jsonProcessed && jsonAnalysis?.analysis?.response) {
+      try {
+        // API yanıtından JSON string'i almaya çalış
+        let jsonData = jsonAnalysis.analysis.response;
+        
+        // Eğer string ise ve JSON formatında ise parse et
+        if (typeof jsonData === 'string') {
+          try {
+            // Bazen API yanıtı düz metin olarak JSON döndürebilir
+            jsonData = JSON.parse(jsonData);
+          } catch (e) {
+            // Parse edilemezse olduğu gibi kullan
+            console.log("JSON parse edilemedi, metin olarak kullanılıyor");
+          }
+        }
+        
+        // JSON'ı formatlı string'e dönüştür
+        const jsonString = JSON.stringify(jsonData, null, 2);
+        
+        // Dosya olarak indir
+        const blob = new Blob([jsonString], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "imza_sirküleri_analiz.json";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        console.error("JSON indirme hatası:", error);
+        alert("JSON indirme sırasında bir hata oluştu.");
+      }
+    } else if (!jsonProcessed) {
+      // Eğer JSON henüz işlenmediyse, analizi başlat
+      analyzeJsonData();
     }
   };
 
@@ -965,24 +1020,24 @@ export default function Home() {
                   ? "İmza Yetkilileri"
                   : "Dosya Analizi"}
               </h2>
-              {/* JSON indirme butonu şu an kullanılmıyor
-              {response?.secondAnalysis && (
+              {documentType === "signature" && response?.analysis && (
                 <button
                   onClick={handleDownloadJSON}
+                  disabled={jsonLoading && !jsonProcessed}
                   style={{
                     padding: "8px 16px",
                     backgroundColor: "#2B5A24",
                     color: "white",
                     border: "none",
                     borderRadius: "5px",
-                    cursor: "pointer",
+                    cursor: jsonLoading && !jsonProcessed ? "not-allowed" : "pointer",
                     fontSize: "13px",
+                    opacity: jsonLoading && !jsonProcessed ? 0.7 : 1,
                   }}
                 >
-                  JSON İNDİR
+                  {jsonLoading && !jsonProcessed ? "JSON İşleniyor..." : "JSON İndir"}
                 </button>
               )}
-              */}
             </div>
             <div
               style={{
