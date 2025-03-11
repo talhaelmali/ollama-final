@@ -12,6 +12,16 @@ const nextConfig = {
     largePageDataBytes: 128 * 1000 * 1000, // 128MB - iç haberleşme için
   },
   
+  // PDF.js için webpack yapılandırması
+  webpack: (config, { isServer }) => {
+    // PDF.js'i server-side build'den hariç tut
+    if (isServer) {
+      config.externals = [...config.externals, 'canvas', 'pdfjs-dist'];
+    }
+    
+    return config;
+  },
+  
   // Maksimum dosya boyutunu artır
   async headers() {
     return [

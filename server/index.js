@@ -15,7 +15,7 @@ const config = {
   model: 'llama3.1:8b',
   temperature: 0.7,
   num_ctx: 20480,
-  uploadDir: 'server/uploads/'
+  uploadDir: 'uploads'
 };
 
 // Store PDF content in memory
@@ -60,6 +60,50 @@ app.get('/test', (req, res) => {
   res.json({
     status: 'success',
     message: 'Express server is working!',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Test endpoint
+app.get('/uploadTest', (req, res) => {
+  res.json({
+    status: 'success',
+    message: 'Upload server is working!',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Test POST endpoint for uploads - simple version
+app.post('/api/uploadTest', (req, res) => {
+  const { extractedText } = req.body;
+  
+  // If extractedText is provided, process it
+  if (extractedText) {
+    // Count words, characters and lines
+    const wordCount = extractedText.split(/\s+/).filter(word => word.length > 0).length;
+    const charCount = extractedText.length;
+    const lineCount = extractedText.split('\n').length;
+    
+    // Return the processed data
+    return res.json({
+      status: 'success',
+      message: 'Text processed successfully!',
+      data: {
+        extractedText: extractedText.substring(0, 200) + '...', // Return a preview
+        stats: {
+          wordCount,
+          charCount,
+          lineCount
+        }
+      },
+      timestamp: new Date().toISOString()
+    });
+  }
+  
+  // Default response if no text is provided
+  res.json({
+    status: 'success',
+    message: 'Upload server is working!',
     timestamp: new Date().toISOString()
   });
 });
@@ -159,26 +203,23 @@ app.post("/api/upload/finalize", async (req, res) => {
   }
 });
 
-// Clear stored PDF content
-app.post("/clear", (req, res) => {
-  storedPDFContent = null;
-  res.json({ message: "Temizlendi" });
-});
 
-// PDF upload and analysis endpoint
-app.post("/upload", upload.single("file"), async (req, res) => {
+// PDF analysis endpoint (now accepts text directly)
+app.post("/api/pdfanalysis", express.json(), async (req, res) => {
   try {
-    const pdfPath = req.file.path;
-    const documentType = req.body.documentType;
-    const pdfText = await extractTextFromPDF(pdfPath);
+    const { text, documentType } = req.body;
+    
+    if (!text) {
+      return res.status(400).json({ error: "Metin bulunamadı" });
+    }
 
-    storedPDFContent = pdfText;
+    storedPDFContent = text;
 
     if (documentType === "signature") {
       const firstPromptJson = {
         model: config.model,
         system: "Extract only signatories in 'Name - Position' format, one per line.",
-        prompt: `List signatories from this document: ${pdfText}`,
+        prompt: `List signatories from this document: ${text}`,
         stream: false,
         options: {
           temperature: config.temperature,
@@ -209,7 +250,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
         2. Return ONLY valid JSON array
         3. No explanations or text outside JSON
         4. Ensure JSON is complete for all people`,
-        prompt: `Return ONLY a JSON array for: ${pdfText}`,
+        prompt: `Return ONLY a JSON array for: ${text}`,
         stream: false,
         options: {
           temperature: config.temperature,
@@ -251,7 +292,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       const firstPromptJson = {
         model: config.model,
         system: "Analyze the provided legal document in detail. Identify the type of document, summarize its main topic, and highlight the key legal points and clauses. Outline potential risks or issues for the bank. Provide legal recommendations or actions that may be necessary. Respond in Turkish in a professional and concise manner without mentioning the lack of a document or any hypothetical scenarios.",
-        prompt: `Analyze this legal document and provide a detailed summary: ${pdfText}`,
+        prompt: `Analyze this legal document and provide a detailed summary: ${text}`,
         stream: false,
         options: {
           temperature: config.temperature,
@@ -272,8 +313,6 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       res.json({ analysis: response.data, type: "normal" });
     }
   } catch (error) {
-    console.log("Upload file:", req.file);
-    console.log("req.body:", req.body);
     console.error("Error:", error.message);
     res.status(500).json({ error: error.message });
   }
@@ -281,24 +320,27 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 
 // Birleştirilmiş Chat API endpoint'i
 app.post('/api/chat', async (req, res) => {
-  const { message, documentType } = req.body;
+  const { message, documentType, extractedText } = req.body;
   
   if (!message) {
     return res.status(400).json({ error: 'Message is required' });
   }
 
+  // Frontend'den gelen extractedText veya daha önce kaydedilmiş storedPDFContent kullan
+  const pdfContent = extractedText || storedPDFContent;
+
   // PDF içeriği varsa PDF analiz işlevselliğini kullan
-  if (storedPDFContent) {
+  if (pdfContent) {
     try {
       let systemPrompt = "";
       if (documentType === "signature") {
         systemPrompt = `You are an assistant specialized in analyzing signature circulars. 
-        You have access to a signature circular document with the following content: ${storedPDFContent}
+        You have access to a signature circular document with the following content: ${pdfContent}
         Please provide accurate information about the signatories, their authorities, and any specific details about their signing powers.
         Focus on answering questions about who can sign, their positions, and their authorization limits.`;
       } else {
         systemPrompt = `You are a legal document analysis assistant with expertise in Turkish law.
-        You have access to a legal document with the following content: ${storedPDFContent}
+        You have access to a legal document with the following content: ${pdfContent}
         Provide detailed analysis and explanations about the document's content, legal implications, and specific clauses.
         Focus on explaining legal terms, requirements, and implications in clear, understandable terms.`;
       }
@@ -332,7 +374,15 @@ app.post('/api/chat', async (req, res) => {
         }
       );
 
-      return res.json({ response: response.data.response || response.data });
+      // Yanıtı doğru şekilde işle
+      let responseData = response.data.response || response.data;
+      
+      // Eğer yanıt bir nesne ise, string'e çevir
+      if (responseData && typeof responseData === 'object') {
+        responseData = JSON.stringify(responseData);
+      }
+
+      return res.json({ response: responseData });
     } catch (error) {
       console.error("Error:", error.message);
       return res.status(500).json({
@@ -356,11 +406,52 @@ app.post('/api/chat', async (req, res) => {
     });
 
     const data = await response.json();
-    res.json({ response: data.response });
+    
+    // Yanıtı doğru şekilde işle
+    let responseData = data.response;
+    
+    // Eğer yanıt bir nesne ise, string'e çevir
+    if (responseData && typeof responseData === 'object') {
+      responseData = JSON.stringify(responseData);
+    }
+    
+    res.json({ response: responseData });
     
   } catch (error) {
     console.error('Error calling Ollama:', error);
     res.status(500).json({ error: 'Failed to get AI response' });
+  }
+});
+
+// Test chat endpoint
+app.post('/api/testchat', async (req, res) => {
+  try {
+    const { message } = req.body;
+    
+    if (!message) {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+
+    const promptJson = {
+      model: config.model,
+      system: "chat with the user",
+      prompt: message,
+    };
+
+    const response = await axios.post(
+      `${apiUrl}/api/generate`,
+      promptJson,
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    res.json({ response: response.data.response });
+  } catch (error) {
+    console.error("Error in test chat:", error.message);
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -371,5 +462,5 @@ if (!fs.existsSync(config.uploadDir)) {
 
 // Start the server
 app.listen(port, '0.0.0.0', () => {
-  console.log(`Server is running on http://0.0.0.0:${port}`);
+  console.log(`Server is running on http://localhost:3000`);
 });

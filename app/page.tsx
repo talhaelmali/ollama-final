@@ -1,9 +1,22 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import Image from "next/image";
+
+// PDF.js modüllerini dinamik olarak import edeceğiz
+let pdfjs: any;
+let GlobalWorkerOptions: any;
+
+// PDF.js modüllerini sadece tarayıcı tarafında yükle
+if (typeof window !== 'undefined') {
+  import('pdfjs-dist').then((pdf) => {
+    pdfjs = pdf;
+    GlobalWorkerOptions = pdf.GlobalWorkerOptions;
+    GlobalWorkerOptions.workerSrc = '/pdfjs/pdf.worker.min.js';
+  });
+}
 
 interface ServicePort {
   port: number;
@@ -27,18 +40,23 @@ interface K8sResponse {
 }
 
 interface ChatMessage {
-  type: 'question' | 'answer' | 'error';
+  type: "question" | "answer" | "error";
   text: string;
 }
 
 export default function Home() {
   // K8s services state
   const [data, setData] = useState<K8sResponse>({ services: [], count: 0 });
-  const [error, setError] = useState<string>('');
+  const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(true);
-  const [serverResponse, setServerResponse] = useState<string>('');
+  const [serverResponse, setServerResponse] = useState<string>("");
+  const [serverResponseUpload, setServerResponseUpload] = useState<string>("");
   const [testLoading, setTestLoading] = useState(false);
-  
+  const [testLoadingUpload, setTestLoadingUpload] = useState(false);
+  const [testLoadingUploadPost, setTestLoadingUploadPost] = useState(false);
+  const [testLoadingExtractedTextPost, setTestLoadingExtractedTextPost] = useState(false);
+  const [uploadPostResponse, setUploadPostResponse] = useState<string>("");
+
   // PDF analysis state
   const [baseUrl, setBaseUrl] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -49,128 +67,122 @@ export default function Home() {
   const [dragActive, setDragActive] = useState(false);
   const [documentType, setDocumentType] = useState("signature");
   const [apiUrl, setApiUrl] = useState<string | null>(null);
-  const [message, setMessage] = useState('');
-  const [aiResponse, setAiResponse] = useState('');
+  const [message, setMessage] = useState("");
+  const [aiResponse, setAiResponse] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
+  const [extractedText, setExtractedText] = useState<string>("");
+  const [isExtracting, setIsExtracting] = useState<boolean>(false);
+  const questionInputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Test chat state
+  const [testMessage, setTestMessage] = useState("");
+  const [testResponse, setTestResponse] = useState("");
+  const [testChatLoading, setTestChatLoading] = useState(false);
 
   // File handling functions
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const files = event.target.files;
     if (!files) return;
     const file = files[0];
     if (!file) return;
-  
-    await uploadFile(file);
-  };
 
-  const uploadFile = async (file: File) => {
-    try {
-      // ELB sınırlamaları nedeniyle tüm dosyaları presigned URL ile yükle
-      console.log("Tüm dosyalar için presigned URL upload kullanılıyor - dosya boyutu:", file.size);
-      await presignedUrlUpload(file);
-    } catch (error) {
-      console.error("Error uploading file:", error);
-      alert("Dosya yükleme hatası: " + (error as Error).message);
+    setFile(file);
+
+    // Check if it's a PDF file
+    if (file.type === 'application/pdf') {
+      // Always extract text from PDF
+      await extractTextFromPDF(file);
+    } else {
+      // For non-PDF files, alert the user
+      alert("Lütfen sadece PDF dosyası yükleyin.");
+      setFile(null);
     }
   };
 
-  const presignedUrlUpload = async (file: File) => {
-    console.log("Presigned URL upload kullanılıyor, dosya boyutu:", file.size);
+  // Extract text from PDF file in the browser
+  const extractTextFromPDF = async (file: File) => {
+    setIsExtracting(true);
     try {
-      // 1. Önce API'den presigned URL iste
-      console.log("Presigned URL isteniyor...");
-      const presignedUrlResponse = await fetch("/api/upload", {
-        method: "POST",
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          fileName: file.name,
-          fileType: file.type,
-          fileSize: file.size
-        }),
-      });
-
-      if (!presignedUrlResponse.ok) {
-        const errorData = await presignedUrlResponse.json();
-        console.error("Presigned URL hatası:", errorData);
-        throw new Error(errorData.error || "Presigned URL alma hatası");
-      }
-
-      const presignedData = await presignedUrlResponse.json();
-      console.log("Presigned URL alındı:", presignedData);
-      
-      if (presignedData.strategy !== 'direct-upload' || !presignedData.url) {
-        throw new Error("Beklenen upload stratejisi alınamadı");
-      }
-
-      // 2. Dosyayı doğrudan upload URL'ine yükle
-      const uploadFormData = new FormData();
-      
-      // Gerekli diğer alanları ekle (form fields)
-      if (presignedData.fields) {
-        Object.entries(presignedData.fields).forEach(([fieldName, fieldValue]) => {
-          uploadFormData.append(fieldName, fieldValue as string);
-        });
+      // PDF.js modülünün yüklendiğinden emin olalım
+      if (!pdfjs) {
+        // PDF.js modülünü dinamik olarak yükle
+        const pdf = await import('pdfjs-dist');
+        pdfjs = pdf;
+        GlobalWorkerOptions = pdf.GlobalWorkerOptions;
+        GlobalWorkerOptions.workerSrc = '/pdfjs/pdf.worker.min.js';
       }
       
-      // Dosyayı ekle (file nesnesi en son eklenmeli)
-      uploadFormData.append('file', file);
-
-      console.log("Dosya yükleniyor...");
-      const uploadResponse = await fetch(presignedData.url, {
-        method: 'POST',
-        body: uploadFormData,
-      });
-
-      if (!uploadResponse.ok) {
-        const errorText = await uploadResponse.text();
-        console.error("Upload hatası:", uploadResponse.status, errorText);
-        throw new Error(`Dosya yükleme hatası: ${uploadResponse.status}`);
-      }
-
-      console.log("Dosya başarıyla yüklendi!");
-      const uploadResult = await uploadResponse.json();
-      console.log("Upload sonucu:", uploadResult);
+      // Read the file as ArrayBuffer
+      const arrayBuffer = await file.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
       
-      // 3. Yükleme işlemini backend'e bildir
-      console.log("Finalize isteği gönderiliyor...");
-      const finalizeResponse = await fetch("/api/upload/finalize", {
-        method: "POST",
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          key: presignedData.key,
-          fileName: file.name,
-          fileSize: file.size,
-          fileType: file.type
-        }),
-      });
-
-      if (!finalizeResponse.ok) {
-        const errorData = await finalizeResponse.json();
-        console.error("Finalize hatası:", errorData);
-        throw new Error(errorData.error || "Yükleme işlemi tamamlanamadı");
+      // Load the PDF document
+      const loadingTask = pdfjs.getDocument({ data: uint8Array });
+      const pdfDoc = await loadingTask.promise;
+      
+      let text = "";
+      // Extract text from each page
+      for (let i = 0; i < pdfDoc.numPages; i++) {
+        const page = await pdfDoc.getPage(i + 1);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items
+          .map((item: any) => item.str)
+          .join(" ");
+        text += `--- Sayfa ${i + 1} ---\n${pageText}\n\n`;
       }
-
-      const finalizeResult = await finalizeResponse.json();
-      console.log("Upload finalize sonucu:", finalizeResult);
-      return finalizeResult;
+      
+      // Set the extracted text
+      setExtractedText(text);
+      console.log(text);
+      // Also set the text in the question input for convenience
+      if (questionInputRef.current) {
+        questionInputRef.current.value = text;
+      }
+      
+      console.log("PDF metin çıkartıldı");
     } catch (error) {
-      console.error("Presigned URL upload hatası:", error);
-      throw error;
+      console.error("Error extracting text from PDF:", error);
+      alert("PDF metin çıkarma hatası: " + (error as Error).message);
+    } finally {
+      setIsExtracting(false);
+    }
+  };
+
+  // Function to analyze the extracted text
+  const analyzeExtractedText = async (text: string) => {
+    setAnalysisLoading(true);
+    try {
+      const res = await fetch("/api/pdfanalysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          text: text,
+          documentType 
+        }),
+      });
+      const data = await res.json();
+      setResponse(data);
+    } catch (error) {
+      console.error("Error analyzing text:", error);
+      setResponse("Error processing the text.");
+    } finally {
+      setAnalysisLoading(false);
     }
   };
 
   const handleClear = async () => {
     try {
-      if (apiUrl) {
-        await fetch(apiUrl + "/clear", { method: "POST" });
-      }
       setFile(null);
       setResponse(null);
       setChatHistory([]);
+      setExtractedText("");
+      
+      // Soru input alanını da temizle
+      if (questionInputRef.current) {
+        questionInputRef.current.value = "";
+      }
     } catch (error) {
       console.error("Temizleme hatası:", error);
     }
@@ -195,58 +207,53 @@ export default function Home() {
     }
   };
 
-    
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file) return alert("Lütfen bir dosya seçin.");
-    if (!apiUrl) return alert("API URL bulunamadı.");
-
-    setAnalysisLoading(true);
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("documentType", documentType);
-
-    try {
-      const res = await fetch(apiUrl + "/upload", {
-        method: "POST",
-        body: formData,
-      });
-      const data = await res.json();
-      setResponse(data);
-    } catch (error) {
-      console.error("Error uploading file:", error);
-      setResponse("Error processing the file.");
-    } finally {
-      setAnalysisLoading(false);
+    
+    // Eğer metin henüz çıkarılmamışsa uyarı ver
+    if (!extractedText) {
+      return alert("Önce PDF dosyasından metin çıkarılmalıdır.");
     }
+    
+    // Çıkarılan metni analiz et
+    await analyzeExtractedText(extractedText);
   };
 
   const handleQuestionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!question.trim() || !apiUrl) return;
+    if (!question.trim()) return;
 
     const userQuestion = question.trim();
-    setChatHistory([
-      ...chatHistory,
-      { type: "question", text: userQuestion },
-    ]);
+    setChatHistory([...chatHistory, { type: "question", text: userQuestion }]);
     setQuestion("");
 
     try {
-      const res = await fetch(apiUrl + "/api/chat", {
+      const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userQuestion, documentType }),
+        body: JSON.stringify({ 
+          message: userQuestion, 
+          documentType,
+          // Eğer PDF'den çıkarılan metin varsa, onu da gönderelim
+          extractedText: extractedText || undefined
+        }),
       });
       const data = await res.json();
-      
+
       // Server yanıtını doğru şekilde işle
-      const responseText = data.response || (data.reply && data.reply.message && data.reply.message.content) || "Yanıt alınamadı.";
+      let responseText = "Yanıt alınamadı.";
       
-      setChatHistory([
-        ...chatHistory,
-        { type: "answer", text: responseText },
-      ]);
+      if (typeof data.response === 'string') {
+        responseText = data.response;
+      } else if (data.response && typeof data.response === 'object') {
+        // Eğer response bir nesne ise, JSON.stringify ile string'e çevirelim
+        responseText = JSON.stringify(data.response, null, 2);
+      } else if (data.reply && data.reply.message && data.reply.message.content) {
+        responseText = data.reply.message.content;
+      }
+
+      setChatHistory([...chatHistory, { type: "answer", text: responseText }]);
     } catch (error) {
       console.error("Chat error:", error);
       setChatHistory([
@@ -278,15 +285,17 @@ export default function Home() {
       if (droppedFile.type === "application/pdf") {
         setFile(droppedFile);
         // Input alanını da güncelle
-        const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+        const fileInput = document.querySelector(
+          'input[type="file"]'
+        ) as HTMLInputElement;
         if (fileInput) {
           const dataTransfer = new DataTransfer();
           dataTransfer.items.add(droppedFile);
           fileInput.files = dataTransfer.files;
         }
-        
-        // Dosyayı yükle
-        await uploadFile(droppedFile);
+
+        // Always extract text from PDF
+        await extractTextFromPDF(droppedFile);
       } else {
         alert("Lütfen sadece PDF dosyası yükleyin.");
       }
@@ -296,7 +305,7 @@ export default function Home() {
   // Signatory table component
   const signatoryTable = (content: string | null) => {
     if (!content) return null;
-    
+
     const parseContent = (text: string) => {
       return text
         .split("\n")
@@ -545,17 +554,17 @@ export default function Home() {
   useEffect(() => {
     const fetchServices = async () => {
       try {
-        const response = await fetch('/api/k8s/services');
+        const response = await fetch("/api/k8s/services");
         const result: K8sResponse = await response.json();
-        
+
         if (result.error) {
           setError(result.error);
         } else {
           setData(result);
         }
       } catch (err) {
-        setError('Failed to fetch Kubernetes services');
-        console.error('Error:', err);
+        setError("Failed to fetch Kubernetes services");
+        console.error("Error:", err);
       } finally {
         setLoading(false);
       }
@@ -564,44 +573,32 @@ export default function Home() {
     fetchServices();
   }, []);
 
-  const testServer = async () => {
-    setTestLoading(true);
-    setServerResponse('');
-    try {
-      const response = await fetch('/api/test');
-      const result = await response.json();
-      setServerResponse(JSON.stringify(result, null, 2));
-    } catch (err) {
-      setServerResponse('Failed to connect to the server: ' + (err instanceof Error ? err.message : String(err)));
-    } finally {
-      setTestLoading(false);
-    }
-  };
-
   const handleChat = async () => {
     if (!message.trim()) return;
-    
+
     setChatLoading(true);
-    setAiResponse('');
-    
+    setAiResponse("");
+
     try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
+      const response = await fetch("/api/chat", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify({ message })
+        body: JSON.stringify({ message }),
       });
-      
+
       const data = await response.json();
-      
+
       if (data.error) {
         throw new Error(data.error);
       }
-      
+
       setAiResponse(data.response);
     } catch (err) {
-      setAiResponse('Error: ' + (err instanceof Error ? err.message : String(err)));
+      setAiResponse(
+        "Error: " + (err instanceof Error ? err.message : String(err))
+      );
     } finally {
       setChatLoading(false);
     }
@@ -622,6 +619,35 @@ export default function Home() {
     justifyContent: "center",
     gap: "12px",
     transition: "all 0.2s ease-in-out",
+  };
+
+  // Test chat function
+  const handleTestChat = async () => {
+    if (!testMessage.trim()) return;
+    
+    setTestChatLoading(true);
+    
+    try {
+      const response = await fetch("/api/testchat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ message: testMessage }),
+      });
+      
+      const data = await response.json();
+      
+      if (data.error) {
+        throw new Error(data.error);
+      }
+      
+      setTestResponse(data.response);
+    } catch (err) {
+      setTestResponse("Error: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setTestChatLoading(false);
+    }
   };
 
   if (loading) {
@@ -653,12 +679,38 @@ export default function Home() {
           <h1 className="text-3xl font-bold text-card-foreground">
             Kubernetes Services ({data.count})
           </h1>
-          <Button 
-            onClick={testServer}
-            disabled={testLoading}
-          >
-            {testLoading ? 'Testing...' : 'Test Server'}
-          </Button>
+        </div>
+
+        {/* Test Chat Section */}
+        <div className="w-full mb-8 p-4 border rounded-lg shadow-sm">
+          <h2 className="text-xl font-bold mb-2">Test Chat</h2>          
+          <div className="mb-4">
+            <textarea
+              value={testMessage}
+              onChange={(e) => setTestMessage(e.target.value)}
+              placeholder="Mesajınızı yazın..."
+              className="w-full p-2 border rounded-md"
+              rows={3}
+              disabled={testChatLoading}
+            />
+          </div>
+          
+          <div className="flex justify-end mb-4">
+            <button
+              onClick={handleTestChat}
+              disabled={testChatLoading || !testMessage.trim()}
+              className="px-4 py-2 bg-blue-500 text-white rounded-md disabled:bg-gray-300"
+            >
+              {testChatLoading ? "Gönderiliyor..." : "Gönder"}
+            </button>
+          </div>
+          
+          {testResponse && (
+            <div className="p-4 bg-gray-100 rounded-md">
+              <h3 className="font-medium mb-2">Yanıt:</h3>
+              <p className="whitespace-pre-wrap">{testResponse}</p>
+            </div>
+          )}
         </div>
 
         {/* PDF Analysis Interface */}
@@ -671,8 +723,9 @@ export default function Home() {
             gap: "20px",
             padding: "25px",
             borderRadius: "12px",
-            boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
-            marginBottom: "2rem"
+            boxShadow:
+              "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+            marginBottom: "2rem",
           }}
         >
           {/* Left Section */}
@@ -711,17 +764,10 @@ export default function Home() {
                 onDragLeave={handleDrag}
                 onDragOver={handleDrag}
                 onDrop={handleDrop}
-                onClick={() =>
-                  document.getElementById("fileInput")?.click()
-                }
+                onClick={() => document.getElementById("fileInput")?.click()}
                 style={dropAreaStyle}
               >
-                <Image
-                  src="/arrow.png"
-                  alt="Arrow"
-                  width={80}
-                  height={50}
-                />
+                <Image src="/arrow.png" alt="Arrow" width={80} height={50} />
                 <p
                   style={{
                     margin: "0",
@@ -731,9 +777,7 @@ export default function Home() {
                     fontStyle: "italic",
                   }}
                 >
-                  {file
-                    ? file.name
-                    : "Yalnızca pdf formatlı dosya yükleyiniz"}
+                  {file ? file.name : "Yalnızca pdf formatlı dosya yükleyiniz"}
                 </p>
                 <input
                   type="file"
@@ -758,12 +802,7 @@ export default function Home() {
                   }}
                 >
                   {file ? "Dosyayı Değiştir" : "Buraya Yükleyiniz"}
-                  <Image
-                    src="/send.png"
-                    alt="Upload"
-                    width={24}
-                    height={24}
-                  />
+                  <Image src="/send.png" alt="Upload" width={24} height={24} />
                 </button>
               </div>
             </div>
@@ -779,7 +818,7 @@ export default function Home() {
               }}
             >
               <h3
-              className='mt-20'
+                className="mt-20"
                 style={{
                   color: "#2B5A24",
                   fontSize: "16px",
@@ -819,7 +858,9 @@ export default function Home() {
               }}
             >
               <button
+                type="submit"
                 onClick={handleSubmit}
+                disabled={analysisLoading || isExtracting || !extractedText}
                 style={{
                   flex: 1,
                   padding: "12px",
@@ -827,9 +868,10 @@ export default function Home() {
                   color: "white",
                   border: "none",
                   borderRadius: "8px",
-                  cursor: "pointer",
+                  cursor: extractedText ? "pointer" : "not-allowed",
                   fontSize: "14px",
                   fontWeight: "bold",
+                  opacity: analysisLoading || isExtracting || !extractedText ? 0.7 : 1,
                 }}
               >
                 Analiz Et
@@ -883,9 +925,7 @@ export default function Home() {
                   display: "flex",
                   flexDirection: "column",
                   justifyContent:
-                    chatHistory.length === 0
-                      ? "center"
-                      : "flex-start",
+                    chatHistory.length === 0 ? "center" : "flex-start",
                   alignItems: "center",
                 }}
               >
@@ -904,19 +944,12 @@ export default function Home() {
                         margin: "5px 0",
                         padding: "10px 15px",
                         backgroundColor:
-                          msg.type === "question"
-                            ? "#4CAF50"
-                            : "#f5f5f5",
-                        color:
-                          msg.type === "question"
-                            ? "white"
-                            : "#333",
+                          msg.type === "question" ? "#4CAF50" : "#f5f5f5",
+                        color: msg.type === "question" ? "white" : "#333",
                         borderRadius: "5px",
                         maxWidth: "80%",
                         alignSelf:
-                          msg.type === "question"
-                            ? "flex-end"
-                            : "flex-start",
+                          msg.type === "question" ? "flex-end" : "flex-start",
                         width: "fit-content",
                       }}
                     >
@@ -1019,9 +1052,7 @@ export default function Home() {
                 flex: 1,
                 overflowY: "auto",
                 backgroundColor:
-                  documentType !== "signature"
-                    ? "#F9F9F9"
-                    : "transparent",
+                  documentType !== "signature" ? "#F9F9F9" : "transparent",
                 borderRadius: "8px",
                 padding: documentType !== "signature" ? "15px" : "0",
               }}
@@ -1042,58 +1073,6 @@ export default function Home() {
             </div>
           </div>
         </div>
-
-        {/* Original K8s Services Section */}
-        {serverResponse && (
-          <div className="bg-card p-4 rounded-lg shadow-lg mb-6">
-            <h2 className="text-xl font-semibold text-card-foreground mb-2">Server Response:</h2>
-            <pre className="bg-muted p-4 rounded-md overflow-x-auto">
-              {serverResponse}
-            </pre>
-          </div>
-        )}
-        
-        {/* <div className="grid gap-6">
-          {data.services.map((service) => (
-            <div key={`${service.namespace}-${service.name}`} className="bg-card p-6 rounded-lg shadow-lg">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold text-card-foreground">
-                  {service.name}
-                </h2>
-                <span className="px-3 py-1 bg-primary/10 rounded-full text-sm text-primary">
-                  {service.type}
-                </span>
-              </div>
-              
-              <div className="space-y-2 text-sm text-muted-foreground">
-                <p>Namespace: {service.namespace}</p>
-                <p>Cluster IP: {service.clusterIP}</p>
-                
-                <div>
-                  <p className="font-medium text-card-foreground">Ports:</p>
-                  <ul className="ml-4 space-y-1">
-                    {service.ports.map((port, idx) => (
-                      <li key={idx}>
-                        {port.port} → {port.targetPort} ({port.protocol})
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                {service.externalUrls.length > 0 && (
-                  <div>
-                    <p className="font-medium text-card-foreground">External URLs:</p>
-                    <ul className="ml-4 space-y-1">
-                      {service.externalUrls.map((url, idx) => (
-                        <li key={idx}>{url}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-        </div> */}
       </div>
     </div>
   );
