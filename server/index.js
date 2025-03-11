@@ -227,6 +227,7 @@ app.post("/api/pdfanalysis", express.json(), async (req, res) => {
         },
       };
 
+      /* İkinci prompt yorum satırına alındı
       const secondPromptJson = {
         model: config.model,
         system: `You are analyzing a signature circular (İmza Sirküleri). Create a valid JSON array containing signature authorities.
@@ -257,7 +258,31 @@ app.post("/api/pdfanalysis", express.json(), async (req, res) => {
           num_ctx: config.num_ctx,
         },
       };
+      */
 
+      // Sadece ilk prompt için istek gönderiyoruz
+      axios.post(
+        `${apiUrl}/api/generate`,
+        firstPromptJson,
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      )
+      .then(response => {
+        res.json({
+          analysis: response.data,
+          secondAnalysis: null, // İkinci analiz şu an kullanılmıyor ama null olarak gönderiyoruz
+          type: "signature",
+        });
+      })
+      .catch(error => {
+        console.error("Error in signature analysis:", error.message);
+        res.status(500).json({ error: error.message });
+      });
+
+      /* Promise.all ile ikinci prompt'u da bekleyen kod yorum satırına alındı
       const firstResponsePromise = axios.post(
         `${apiUrl}/api/generate`,
         firstPromptJson,
@@ -288,6 +313,7 @@ app.post("/api/pdfanalysis", express.json(), async (req, res) => {
         secondAnalysis: secondResponse.data,
         type: "signature",
       });
+      */
     } else {
       const firstPromptJson = {
         model: config.model,

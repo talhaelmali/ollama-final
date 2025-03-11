@@ -70,6 +70,7 @@ export default function Home() {
   const [message, setMessage] = useState("");
   const [aiResponse, setAiResponse] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
+  const [questionLoading, setQuestionLoading] = useState(false);
   const [extractedText, setExtractedText] = useState<string>("");
   const [isExtracting, setIsExtracting] = useState<boolean>(false);
   const questionInputRef = useRef<HTMLTextAreaElement>(null);
@@ -222,11 +223,12 @@ export default function Home() {
 
   const handleQuestionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!question.trim()) return;
+    if (!question.trim() || questionLoading) return;
 
     const userQuestion = question.trim();
     setChatHistory([...chatHistory, { type: "question", text: userQuestion }]);
     setQuestion("");
+    setQuestionLoading(true);
 
     try {
       const res = await fetch("/api/chat", {
@@ -260,6 +262,8 @@ export default function Home() {
         ...chatHistory,
         { type: "error", text: "Bir hata oluştu." },
       ]);
+    } finally {
+      setQuestionLoading(false);
     }
   };
 
@@ -621,35 +625,6 @@ export default function Home() {
     transition: "all 0.2s ease-in-out",
   };
 
-  // Test chat function
-  const handleTestChat = async () => {
-    if (!testMessage.trim()) return;
-    
-    setTestChatLoading(true);
-    
-    try {
-      const response = await fetch("/api/testchat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ message: testMessage }),
-      });
-      
-      const data = await response.json();
-      
-      if (data.error) {
-        throw new Error(data.error);
-      }
-      
-      setTestResponse(data.response);
-    } catch (err) {
-      setTestResponse("Error: " + (err instanceof Error ? err.message : String(err)));
-    } finally {
-      setTestChatLoading(false);
-    }
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen bg-background p-8">
@@ -679,38 +654,6 @@ export default function Home() {
           <h1 className="text-3xl font-bold text-card-foreground">
             Kubernetes Services ({data.count})
           </h1>
-        </div>
-
-        {/* Test Chat Section */}
-        <div className="w-full mb-8 p-4 border rounded-lg shadow-sm">
-          <h2 className="text-xl font-bold mb-2">Test Chat</h2>          
-          <div className="mb-4">
-            <textarea
-              value={testMessage}
-              onChange={(e) => setTestMessage(e.target.value)}
-              placeholder="Mesajınızı yazın..."
-              className="w-full p-2 border rounded-md"
-              rows={3}
-              disabled={testChatLoading}
-            />
-          </div>
-          
-          <div className="flex justify-end mb-4">
-            <button
-              onClick={handleTestChat}
-              disabled={testChatLoading || !testMessage.trim()}
-              className="px-4 py-2 bg-blue-500 text-white rounded-md disabled:bg-gray-300"
-            >
-              {testChatLoading ? "Gönderiliyor..." : "Gönder"}
-            </button>
-          </div>
-          
-          {testResponse && (
-            <div className="p-4 bg-gray-100 rounded-md">
-              <h3 className="font-medium mb-2">Yanıt:</h3>
-              <p className="whitespace-pre-wrap">{testResponse}</p>
-            </div>
-          )}
         </div>
 
         {/* PDF Analysis Interface */}
@@ -981,13 +924,15 @@ export default function Home() {
                 />
                 <button
                   type="submit"
+                  disabled={questionLoading}
                   style={{
                     padding: "10px 20px",
                     backgroundColor: "#2B5A24",
                     color: "white",
                     border: "none",
                     borderRadius: "5px",
-                    cursor: "pointer",
+                    cursor: questionLoading ? "not-allowed" : "pointer",
+                    opacity: questionLoading ? 0.7 : 1,
                   }}
                 >
                   Gönder
@@ -1030,6 +975,7 @@ export default function Home() {
                   ? "İmza Yetkilileri"
                   : "Dosya Analizi"}
               </h2>
+              {/* JSON indirme butonu şu an kullanılmıyor
               {response?.secondAnalysis && (
                 <button
                   onClick={handleDownloadJSON}
@@ -1046,6 +992,7 @@ export default function Home() {
                   JSON İNDİR
                 </button>
               )}
+              */}
             </div>
             <div
               style={{

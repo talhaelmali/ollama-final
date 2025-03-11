@@ -1,3 +1,4 @@
+# Base image for building and running
 FROM node:18-alpine AS base
 
 # Install dependencies only when needed
@@ -5,14 +6,19 @@ FROM base AS deps
 WORKDIR /app
 
 # Install dependencies based on the preferred package manager
-COPY package.json package-lock.json ./
-RUN npm ci
+COPY package.json package-lock.json ./ 
+RUN npm ci --production
 
-# Rebuild the source code only when needed
+# Builder stage
 FROM base AS builder
 WORKDIR /app
+
+# Copy installed dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+
+# Copy public folder explicitly to ensure it's included
+COPY public ./public
 
 # Disable telemetry during the build
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -23,23 +29,31 @@ RUN chmod -R 755 node_modules/.bin
 # Build the application
 RUN npm run build
 
-# Production image, copy all the files and run next
+# Production image - optimized for running the built app
 FROM base AS runner
 WORKDIR /app
 
 # Disable telemetry during runtime
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Add a system user for security
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
 # Set the correct permission for prerender cache
-RUN mkdir .next
+RUN mkdir -p .next
 RUN chown nextjs:nodejs .next
 
-# Automatically leverage output traces to reduce image size
+# Copy built application from builder stage
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+
+# Ensure public folder exists and is readable
+RUN ls -la ./public || echo "No public folder found in the build"
+
+# Set permissions for the copied files
+RUN chown -R nextjs:nodejs /app
 
 USER nextjs
 
@@ -48,5 +62,5 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-# server.js is created by next build from standalone output
-CMD ["node", "server.js"]
+# Start the Next.js server
+CMD ["node", "server.js"]
