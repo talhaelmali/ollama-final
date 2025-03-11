@@ -279,7 +279,8 @@ export default function Home() {
     if (!question.trim() || questionLoading) return;
 
     const userQuestion = question.trim();
-    setChatHistory([...chatHistory, { type: "question", text: userQuestion }]);
+    const updatedChatHistory = [...chatHistory, { type: "question" as const, text: userQuestion }];
+    setChatHistory(updatedChatHistory);
     setQuestion("");
     setQuestionLoading(true);
 
@@ -305,12 +306,12 @@ export default function Home() {
         responseText = `Hata: ${data.error}`;
       }
 
-      setChatHistory([...chatHistory, { type: "answer", text: responseText }]);
+      setChatHistory([...updatedChatHistory, { type: "answer" as const, text: responseText }]);
     } catch (error) {
       console.error("Chat error:", error);
       setChatHistory([
-        ...chatHistory,
-        { type: "error", text: "Bir hata oluştu." },
+        ...updatedChatHistory,
+        { type: "error" as const, text: "Bir hata oluştu." },
       ]);
     } finally {
       setQuestionLoading(false);
