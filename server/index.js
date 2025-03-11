@@ -423,6 +423,38 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
+// Test chat endpoint
+app.post('/api/testchat', async (req, res) => {
+  try {
+    const { message } = req.body;
+    
+    if (!message) {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+
+    const promptJson = {
+      model: config.model,
+      system: "chat with the user",
+      prompt: message,
+    };
+
+    const response = await axios.post(
+      `${apiUrl}/api/generate`,
+      promptJson,
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    res.json({ response: response.data.response });
+  } catch (error) {
+    console.error("Error in test chat:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Create uploads directory if it doesn't exist
 if (!fs.existsSync(config.uploadDir)) {
   fs.mkdirSync(config.uploadDir, { recursive: true });

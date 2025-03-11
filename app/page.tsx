@@ -74,6 +74,11 @@ export default function Home() {
   const [isExtracting, setIsExtracting] = useState<boolean>(false);
   const questionInputRef = useRef<HTMLTextAreaElement>(null);
 
+  // Test chat state
+  const [testMessage, setTestMessage] = useState("");
+  const [testResponse, setTestResponse] = useState("");
+  const [testChatLoading, setTestChatLoading] = useState(false);
+
   // File handling functions
   const handleFileChange = async (
     event: React.ChangeEvent<HTMLInputElement>
@@ -130,12 +135,13 @@ export default function Home() {
       
       // Set the extracted text
       setExtractedText(text);
+      console.log(text);
       // Also set the text in the question input for convenience
       if (questionInputRef.current) {
         questionInputRef.current.value = text;
       }
       
-      console.log("PDF text extracted successfully");
+      console.log("PDF metin çıkartıldı");
     } catch (error) {
       console.error("Error extracting text from PDF:", error);
       alert("PDF metin çıkarma hatası: " + (error as Error).message);
@@ -567,9 +573,6 @@ export default function Home() {
     fetchServices();
   }, []);
 
-
-
-
   const handleChat = async () => {
     if (!message.trim()) return;
 
@@ -618,6 +621,35 @@ export default function Home() {
     transition: "all 0.2s ease-in-out",
   };
 
+  // Test chat function
+  const handleTestChat = async () => {
+    if (!testMessage.trim()) return;
+    
+    setTestChatLoading(true);
+    
+    try {
+      const response = await fetch("/api/testchat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ message: testMessage }),
+      });
+      
+      const data = await response.json();
+      
+      if (data.error) {
+        throw new Error(data.error);
+      }
+      
+      setTestResponse(data.response);
+    } catch (err) {
+      setTestResponse("Error: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setTestChatLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background p-8">
@@ -649,7 +681,38 @@ export default function Home() {
           </h1>
         </div>
 
-        
+        {/* Test Chat Section */}
+        <div className="w-full mb-8 p-4 border rounded-lg shadow-sm">
+          <h2 className="text-xl font-bold mb-2">Test Chat</h2>          
+          <div className="mb-4">
+            <textarea
+              value={testMessage}
+              onChange={(e) => setTestMessage(e.target.value)}
+              placeholder="Mesajınızı yazın..."
+              className="w-full p-2 border rounded-md"
+              rows={3}
+              disabled={testChatLoading}
+            />
+          </div>
+          
+          <div className="flex justify-end mb-4">
+            <button
+              onClick={handleTestChat}
+              disabled={testChatLoading || !testMessage.trim()}
+              className="px-4 py-2 bg-blue-500 text-white rounded-md disabled:bg-gray-300"
+            >
+              {testChatLoading ? "Gönderiliyor..." : "Gönder"}
+            </button>
+          </div>
+          
+          {testResponse && (
+            <div className="p-4 bg-gray-100 rounded-md">
+              <h3 className="font-medium mb-2">Yanıt:</h3>
+              <p className="whitespace-pre-wrap">{testResponse}</p>
+            </div>
+          )}
+        </div>
+
         {/* PDF Analysis Interface */}
         <div
           style={{
@@ -795,8 +858,9 @@ export default function Home() {
               }}
             >
               <button
+                type="submit"
                 onClick={handleSubmit}
-                disabled={analysisLoading || isExtracting}
+                disabled={analysisLoading || isExtracting || !extractedText}
                 style={{
                   flex: 1,
                   padding: "12px",
@@ -804,10 +868,10 @@ export default function Home() {
                   color: "white",
                   border: "none",
                   borderRadius: "8px",
-                  cursor: "pointer",
+                  cursor: extractedText ? "pointer" : "not-allowed",
                   fontSize: "14px",
                   fontWeight: "bold",
-                  opacity: analysisLoading || isExtracting ? 0.7 : 1,
+                  opacity: analysisLoading || isExtracting || !extractedText ? 0.7 : 1,
                 }}
               >
                 Analiz Et
